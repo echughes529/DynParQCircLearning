@@ -21,23 +21,11 @@ In particular, it is shown that these architectures are promising candidates for
 
 ### Running Code
 
-## Running the Code
-
-After setting up the virtual environment and installing the dependencies in requirements.txt, you can run the examples or main scripts using the `-m` flag.
-
-This project is structured as a Python package, so scripts should be executed from the **project root directory** as modules, rather than by running the `.py` files directly.
-
-For example:
+To run the code, make sure you’re in the project root and execute the script as a module:
 
 ```bash
-# Activate your environment first (example shown for macOS/Linux)
-source DPQC_venv/bin/activate
-
-# Navigate to the project root
-cd /path/to/DynParQCircLearning
-
-# Run the ground-state example
-python -m src.examples.find_gs_tc_example
+python3 -m src.examples.find_gs_tc_example
+```
 
 ### Contributors and acknowledgement
 
