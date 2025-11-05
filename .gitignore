@@ -1,3 +1,22 @@
+# Ignore macOS system files
 .DS_Store
+
+# Ignore IDE/editor settings
+.idea/
+.vscode/
+
+# Ignore virtual environment named DPQC_venv
+DPQC_venv/
+
+# Ignore Python cache files
 __pycache__/
-.idea
+ctg_cache/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore environment or build artifacts
+.env
+*.egg-info/
+build/
+dist/

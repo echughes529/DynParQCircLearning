@@ -19,6 +19,26 @@ In particular, it is shown that these architectures are promising candidates for
   - `find_gibbs_varqite`: Functionality to approximate a Gibbs state using DPQCs as ansatz based on variational quantum imaginary time evolution.
   - `find_gs`: Functionality to approximate a ground state using DPQCs as ansatz with a sparse or local observable as a cost function.
 
+### Running Code
+
+## Running the Code
+
+After setting up the virtual environment and installing the dependencies in requirements.txt, you can run the examples or main scripts using the `-m` flag.
+
+This project is structured as a Python package, so scripts should be executed from the **project root directory** as modules, rather than by running the `.py` files directly.
+
+For example:
+
+```bash
+# Activate your environment first (example shown for macOS/Linux)
+source DPQC_venv/bin/activate
+
+# Navigate to the project root
+cd /path/to/DynParQCircLearning
+
+# Run the ground-state example
+python -m src.examples.find_gs_tc_example
+
 ### Contributors and acknowledgement
 
 Abhinav Deshpande <abhinav.deshpande@ibm.com>
