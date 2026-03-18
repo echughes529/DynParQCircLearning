@@ -12,8 +12,6 @@ from qiskit.quantum_info import Pauli, SparsePauliOp, Statevector, partial_trace
 import numpy as np
 import scipy
 
-#TODO Typehints and comments
-
 I = Pauli('I')
 Z = Pauli('Z')
 X = Pauli('X')
@@ -62,10 +60,14 @@ class ToricCode:
         self.Ly = Ly  # Lattice size in y direction
         self.num_qubits = 2 * Lx * Ly  - Lx - Ly # Each site has 2 qubits (one for each edge)
 
+    def name(self):
+        return "toriccode"
+        
     def qubit_index(self, x, y, direction):
         """
-        Maps a pair of integers (x, y) and a direction (0 for horizontal, 1 for vertical) to a qubit index.
-        If direction is 2, then just gives the corner vertex (used when adding ancillas to toric code)
+        Maps a pair of integers (x, y) and a direction (0 for north, 1 for west) to a qubit index.
+        If direction is 2, then just gives the central vertex (used when adding ancillas to toric code)
+        y -> y+1 takes you south, x-> x+1 takes you east
         """
         
         if x==self.Lx-1 and direction==0:
@@ -93,6 +95,16 @@ class ToricCode:
         ]
         return list(filter(lambda x: not None in x, candidate))
 
+    def claws_unitaries(self, x, y):
+        """
+        Given a qubit "address", generates the pairs of 2-qubits we'll use in the unitary ansatz.
+        """
+        candidate = [(self.qubit_index(x, y+1, 0), self.qubit_index(x, y, 1)), # First
+        (self.qubit_index(x, y+1, 0), self.qubit_index(x+1, y, 1)),
+        (self.qubit_index(x+1, y, 1), self.qubit_index(x, y, 0)), # These first three define a U-shaped claw
+        (self.qubit_index(x, y, 0), self.qubit_index(x, y, 1))] #Forms a loop
+        return list(filter(lambda x: not None in x, candidate))
+
     def claws_measurements(self, x, y):
         """
         Given a qubit "address", generates the pairs of 2-qubits we'll use in the FLDC.
@@ -110,6 +122,9 @@ class ToricCode:
 
     def all_claws_measurements(self):
         return sum([self.claws_measurements(x, y) for y in range(self.Ly - 1) for x in range(self.Lx - 1)], [])
+
+    def all_claws_unitaries(self):
+        return sum([self.claws_unitaries(x, y) for y in range(self.Ly - 1) for x in range(self.Lx - 1)], [])
 
     def star_operator(self, x, y, nancillas=0, tc=0):
         """
@@ -149,9 +164,15 @@ class ToricCode:
         else:
             return xops
 
+    def all_stars(self,nancillas=0,tc=1):
+        return [self.star_operator(i,j,nancillas,tc=tc) for i in range(self.Lx) for j in range(self.Ly)]
+    
+    def all_plaquettes(self, nancillas=0,tc=1):
+        return [self.plaquette_operator(i,j,nancillas,tc=tc) for i in range(self.Lx-1) for j in range(self.Ly-1)]
+
     def hamiltonian(self, J=1,nancillas=0):
-        allstars = [self.star_operator(i,j,nancillas) for i in range(self.Lx) for j in range(self.Ly)]
-        allplaquettes = [self.plaquette_operator(i,j,nancillas) for i in range(self.Lx-1) for j in range(self.Ly-1)]
+        allstars = self.all_stars(nancillas)
+        allplaquettes = self.all_plaquettes(nancillas)
         H = - SparsePauliOp(allstars) - SparsePauliOp(allplaquettes)
         return J*H
     
@@ -160,7 +181,7 @@ class ToricCode:
         allplaquettes = [self.plaquette_operator(i,j,nancillas,tc=1) for i in range(self.Lx-1) for j in range(self.Ly-1)]
         a = array_to_tc_structure(allstars,self.num_qubits + nancillas,'Z')
         a.extend(array_to_tc_structure(allplaquettes,self.num_qubits + nancillas,'X'))
-        weights = -1*np.ones(len(a))
+        weights = -J*np.ones(len(a))
         return a, weights
 
     def hamiltonian_tc_perturbation(self, h, nancillas=0):

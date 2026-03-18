@@ -1,3 +1,9 @@
 .DS_Store
 __pycache__/
 .idea
+ctg_cache/*
+jax_cache/*
+tmp/*
+logs/*
+docs/*
+.whitesource

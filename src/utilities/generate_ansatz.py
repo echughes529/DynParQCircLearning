@@ -10,6 +10,11 @@ import tensorcircuit as tc
 import jax
 import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_compilation_cache_dir", "./jax_cache")
+jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
+
 K = tc.set_backend("jax")
 
 from qiskit.circuit import QuantumCircuit, ParameterVector, QuantumRegister, ClassicalRegister
@@ -50,9 +55,7 @@ def onesetofunitaries(qc, claws, params, paramindex, measindx=None,measure=False
             qc.general_kraus(kraus_ops,[(locs,)]) # If using DMCircuit
             measindx += 1
             qc = precompute(qc)
-            return qc, paramindex, measindx
-        else:
-            return qc, paramindex
+    return qc, paramindex
 
 def onelayerofsingleunitaries(qc, params, paramindex, n=None):
     if n is None:
@@ -88,6 +91,66 @@ def construct_circuit(n):
         qc.cx(k, k+1)
     return params, qc
 
+def construct_dyn_circuit_brickwork(params,sc):
+    nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
+    claws = sc["claws"]; ancillas = sc["ancillas"]; nparams = sc["nparams"]
+    backend = sc["backend"]
+    paramindex = 0
+    measindex = 0
+    if backend=="tc":
+        qc = tc.Circuit(nq+n_ancillas,split=split_conf)
+        for l in range(nlayers):
+            qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
+            if howoften and (l % howoften == howoften - 1) and ancillas:
+                for a in ancillas:
+                    # r = qc.cond_measurement(a)
+                    # qc.conditional_gate(r, [tc.gates.i(), tc.gates.x()], a)
+                    # Is equivalent to qc.reset(a), which MPSCircuit does not have
+                    qc.reset(a)
+                    measindex += 1
+
+        qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
+
+    # elif backend=="qiskit":
+    #     parameters = ParameterVector('θ', nparams)
+    #     qr = QuantumRegister(nq+n_ancillas)
+    #     qc = QuantumCircuit(qr)
+    #     for l in range(nlayers):
+    #         qc, paramindex = onesetofunitaries(qc,claws,parameters,paramindex,backend="qiskit")
+    #         if howoften and (l % howoften == howoften - 1) and ancillas:
+    #             for a in ancillas:
+    #                 qc.reset(a)
+    #                 measindex += 1
+
+    #     qc, paramindex = onelayerofsingleunitaries(qc, parameters, paramindex,nq,backend="qiskit")
+
+    return qc
+
+def construct_unitary_circuit_brickwork(params,sc):
+    nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
+    claws = sc["claws"]; ancillas = sc["ancillas"]; nparams = sc["nparams"]
+    backend = sc["backend"]
+    paramindex = 0
+    measindex = 0
+    if backend=="tc":
+        qc = tc.Circuit(nq+n_ancillas,split=split_conf)
+
+        for l in range(nlayers):
+            qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
+
+        qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
+
+    # elif backend=="qiskit":
+    #     parameters = ParameterVector('θ', nparams)
+    #     qr = QuantumRegister(nq+n_ancillas)
+    #     qc = QuantumCircuit(qr)
+    #     for l in range(nlayers):
+    #         qc, paramindex = onesetofunitaries(qc,claws,parameters,paramindex,backend="qiskit")
+
+    #     qc, paramindex = onelayerofsingleunitaries(qc, parameters, paramindex,nq,backend="qiskit")
+
+    return qc
+
 
 def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=3):
     toriccode = ToricCode(Lx,Ly)
@@ -119,6 +182,197 @@ def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=
 
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
     return qc
+
+def get_nresets_per_layer_toriccode(Lx, Ly, reset_direction=1):
+    """
+    Calculate the number of resets per layer for toric code lattice.
+    
+    Args:
+        Lx, Ly: Lattice dimensions
+        reset_direction: Direction for reset qubits (0=horizontal, 1=vertical, 2=plaquette corners)
+    
+    Returns:
+        int: Number of valid reset qubits per layer
+    """
+    toriccode = ToricCode(Lx, Ly)
+    reset_qubits = [toriccode.qubit_index(x, y, reset_direction) for x in range(Lx - 1) for y in range(Ly - 1)]
+    reset_qubits = [q for q in reset_qubits if q is not None]
+    return len(reset_qubits)
+
+def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
+    toriccode = ToricCode(Lx,Ly)
+    nplaquettes = (Lx-1)*(Ly-1)
+    nq = 2*Lx*Ly - Lx - Ly 
+    if nlayers is None:
+        # nlayers = max(Lx,Ly)
+        nlayers = 2
+    qc = tc.Circuit(nq)
+    
+    nparams = nplaquettes * 4 * 9 *nlayers + 3*nq
+    if params.shape[0] != nparams:
+        raise ValueError(f"Parameter vector has wrong size: got {params.shape[0]}, expected {nparams}.")
+    
+    paramindex = 0
+
+    claws = toriccode.all_claws_unitaries()
+    claws = [claws[i::4][j] for i in range(4) for j in range((Lx-1)*(Ly-1))] # Rearranges them so as to parallelise; still in steps of 4 because the last cartan block between qubit and ancilla is replaced by one between system qubits.
+    # plaquettes = [toriccode.qubit_index(x,y,2) for x in range(Lx-1) for y in range(Ly-1)]
+    measindex = 0
+    for l in range(nlayers):
+        qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
+
+    qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
+    return qc
+
+
+def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1):
+    """
+    Construct a dynamic circuit for toric code lattice with probabilistic resets on system qubits.
+    
+    Instead of resetting ancilla qubits, this applies probabilistic resets to system qubits.
+    Each reset requires 2 additional qubits:
+    - One ancilla for probability control (parametrized Ry gate)
+    - One ancilla for measurement purification
+    
+    Args:
+        params: Parameter vector
+        Lx, Ly: Lattice dimensions
+        nlayers: Number of layers (default: 2)
+        reset_qubits: List of system qubit indices to reset. If None, uses reset_direction.
+        reset_direction: Direction for default reset qubits (0=horizontal, 1=vertical, 2=plaquette centers)
+    
+    Returns:
+        tc.Circuit: The constructed circuit
+    """
+    toriccode = ToricCode(Lx, Ly)
+    nplaquettes = (Lx - 1) * (Ly - 1)
+    nq = 2 * Lx * Ly - Lx - Ly
+    
+    if nlayers is None:
+        nlayers = 2
+    
+    # Determine which system qubits to reset
+    if reset_qubits is None:
+        # Default: reset qubits based on reset_direction
+        reset_qubits = [toriccode.qubit_index(x, y, reset_direction) for x in range(Lx - 1) for y in range(Ly - 1)]
+        reset_qubits = [q for q in reset_qubits if q is not None]
+    
+    nresets_per_layer = len(reset_qubits)
+    # Apply resets every layer
+    total_resets = nresets_per_layer * nlayers
+    
+    # Each reset needs 2 ancillas: one for probability control, one for purification
+    nancillas = 2 * total_resets
+    
+    # Create circuit with system qubits + ancillas
+    qc = tc.Circuit(nq + nancillas, split=split_conf)
+    
+    # Calculate number of parameters needed:
+    # - Unitaries: nplaquettes * 3 * 9 * nlayers (no more Cartan block connecting system qubits to plaquette ancillas, so 3 instead of 4)
+    # - Probability control: 1 parameter per reset (total_resets = nresets_per_layer * nlayers)
+    # - Final single qubit unitaries: 3 * nq
+    nparams = nplaquettes * 3 * 9 * nlayers + total_resets + 3 * nq
+    
+    if len(params) != nparams:
+        raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
+    
+    paramindex = 0
+    
+    # Prepare claws for unitaries
+    claws = toriccode.all_claws() # No more plaquette qubits
+    claws = [claws[i::3 ][j] for i in range(3) for j in range((Lx - 1) * (Ly - 1))]
+    
+    ancilla_index = 0  # Track which ancilla pair to use
+    
+    for l in range(nlayers):
+        # Apply one set of unitaries
+        qc, paramindex = onesetofunitaries(qc, claws, params, paramindex)
+        
+        # Apply probabilistic resets every layer
+        for sys_qubit in reset_qubits:
+            # Ancilla indices for this reset
+            prob_ancilla = nq + 2 * ancilla_index      # Probability control ancilla
+            purif_ancilla = nq + 2 * ancilla_index + 1  # Purification ancilla
+            
+            # Apply parametrized Ry to probability control ancilla
+            # This determines the probability of reset: |0⟩ cos(θ/2) + |1⟩ sin(θ/2)
+            qc.ry(prob_ancilla, theta=params[paramindex])
+            paramindex += 1
+            
+            # Probabilistic reset implementation:
+            # 1. Copy system qubit state to purification ancilla (controlled on prob_ancilla)
+            # 2. Reset system qubit to |0⟩ (controlled on prob_ancilla)
+            
+            # Controlled CNOT from system qubit to purification ancilla to record its state
+            qc.ccx(prob_ancilla, sys_qubit, purif_ancilla)
+            
+            # Controlled reset: if prob_ancilla is |1⟩, reset sys_qubit to |0⟩
+            # This is done by controlled-X from purif_ancilla back to sys_qubit
+            qc.ccx(prob_ancilla, purif_ancilla, sys_qubit)
+            
+            ancilla_index += 1
+    
+    # Final layer of single qubit unitaries on system qubits
+    qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex, nq)
+    
+    return qc
+
+
+def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
+    """
+    Construct a circuit for toric code lattice with small-angle initialization.
+    
+    Uses fixed CZ gates for two-qubit interactions and parameterized single-qubit rotations.
+    The parameters are expected to be small angles for initialization near the identity.
+    
+    Args:
+        params: Parameter vector for single-qubit rotations
+        Lx, Ly: Lattice dimensions
+        nlayers: Number of layers (default: 2)
+    
+    Returns:
+        tc.Circuit: The constructed circuit
+    """
+    toriccode = ToricCode(Lx, Ly)
+    nplaquettes = (Lx - 1) * (Ly - 1)
+    nq = 2 * Lx * Ly - Lx - Ly
+    
+    if nlayers is None:
+        nlayers = 2
+    
+    # Calculate number of parameters needed:
+    # - Single-qubit rotations: 3 parameters per qubit per layer (Ry-Rz-Ry)
+    # - nlayers of rotations + CZ gates, plus final layer of rotations
+    # - Total: 3 * nq * (nlayers + 1)
+    nparams = 3 * nq * (nlayers + 1)
+    
+    if len(params) != nparams:
+        raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
+    
+    # Create circuit with only system qubits (no ancillas needed)
+    qc = tc.Circuit(nq, split=split_conf)
+    
+    paramindex = 0
+    
+    # Prepare claws for two-qubit gates
+    claws = toriccode.all_claws()
+    claws = [claws[i::3][j] for i in range(3) for j in range((Lx - 1) * (Ly - 1))]
+    
+    # Apply layers
+    for l in range(nlayers):
+        # Apply single-qubit rotations
+        for i in range(nq):
+            qc, paramindex = universalsingle(qc,i,params,paramindex)
+        # Apply fixed CZ gates on claws
+        for cl in claws:
+            qc.cz(cl[0], cl[1])
+    
+    # Final layer of single-qubit rotations
+    for i in range(nq):
+        qc, paramindex = universalsingle(qc,i,params,paramindex)
+    
+    return qc
+
 
 def test_ansatz(param, n, nlayers, n_resets):
     n = 2*n
@@ -306,7 +560,7 @@ def construct_dissipative_ansatz_dm(n, nlayers, param=None, dm_varqte=False, ret
         K0 = jnp.array([[1, 0], [0, jnp.sqrt(1-p)]])
         K1 = jnp.array([[0, 0], [0, jnp.sqrt(p)]])
         return K0, K1
-    def kraus3(p, r): #TODO
+    def kraus3(p, r):
         p = jnp.abs(jnp.cos(p)) # Ensure p\in[0,1[
         r = jnp.abs(jnp.cos(r))  # Ensure r\in[0,1[
         K0 = jnp.sqrt(1-p-r)*jnp.array([[1, 0], [0, 1]])
@@ -315,7 +569,7 @@ def construct_dissipative_ansatz_dm(n, nlayers, param=None, dm_varqte=False, ret
         # K3 = jnp.sqrt(r / 2)*jnp.array([[0, 1], [1, 0]])
         K3 = jnp.sqrt(r) * jnp.array([[1, 0], [0, -1]])
         return K0, K1, K2, K3
-    def kraus4(p, q, r): #TODO
+    def kraus4(p, q, r):
         p = jnp.abs(jnp.cos(p)) # Ensure p\in[0,1[
         q = jnp.abs(jnp.cos(q)) # Ensure q\in[0,1[
         r = jnp.abs(jnp.cos(r))  # Ensure r\in[0,1[
