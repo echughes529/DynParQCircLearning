@@ -7,3 +7,5 @@ tmp/*
 logs/*
 docs/*
 .whitesource
+outputs/*
+venv/
