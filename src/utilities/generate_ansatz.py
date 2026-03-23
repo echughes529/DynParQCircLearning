@@ -9,6 +9,7 @@
 import tensorcircuit as tc
 import jax
 import jax.numpy as jnp
+import tensorflow as tf
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_compilation_cache_dir", "./jax_cache")
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
@@ -418,7 +419,6 @@ def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
     num_params = (nlayers+0.5)*n*15 + 3*n_resets
     if param is None:
-        import tensorflow as tf
         num_params = num_params.astype(int)
         paramc = tf.Variable(initial_value=tf.random.uniform(shape=[num_params]))#, stddev=0.1,))
     else:
@@ -698,7 +698,6 @@ def construct_dissipative_ansatz_genresetsDM(n, nlayers, param=None,seed=None):
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
     num_params = int((nlayers+1)*(n-1)*9) + 3*n_resets + 3*n
     if param is None:
-        import tensorflow as tf
         paramc = tf.Variable(initial_value=tf.random.uniform(shape=[num_params]))#, stddev=0.1,))
     else:
         if param.shape != (num_params,):
@@ -727,7 +726,6 @@ def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_p
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
     num_params = int((nlayers+0.5)*n*15)
     if param is None:
-        import tensorflow as tf
         paramc = tf.Variable(initial_value=tf.random.uniform(shape=[num_params]))#, stddev=0.1,))
     else:
         if len(param) != num_params:
@@ -837,7 +835,6 @@ def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=Non
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
     num_params = int((nlayers+0.5)*n*15)
     if param is None:
-        import tensorflow as tf
         paramc = tf.Variable(initial_value=tf.random.uniform(shape=[num_params]))#, stddev=0.1,))
     else:
         if len(param) != num_params:
