@@ -254,7 +254,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     
     # Determine which system qubits to reset
     if reset_qubits is None:
-        # Default: reset qubits based on reset_direction
+        # Default: reset qubits based on reset_direction, currently resetting vertical qubits
         reset_qubits = [toriccode.qubit_index(x, y, reset_direction) for x in range(Lx - 1) for y in range(Ly - 1)]
         reset_qubits = [q for q in reset_qubits if q is not None]
     

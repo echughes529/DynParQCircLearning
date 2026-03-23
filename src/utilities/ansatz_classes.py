@@ -40,9 +40,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
     h: float = 0.0
     
     # Ansatz selection
-    use_prob_resets: bool = False
+    use_prob_resets: bool = True
     which_qubits_for_prob_reset: Optional[list] = None
-    prob_reset_direction: int = 1
+    prob_reset_direction: int = 1 # vertical
 
     use_small_angle_initialization: bool = False
     range_initial_parameters: float = jnp.pi

@@ -87,9 +87,9 @@ class VariationalAnsatz(abc.ABC):
 
     Concrete subclasses need to implement abstract members:
 
-    1. ``_circuit(self, params, *args)`` – builds the parameterised circuit.
-    2. ``_hamiltonian_terms(self)`` – returns list of Hamiltonian terms.
-    3. ``get_full_hamiltonian(self)`` – returns the sparse Hamiltonian operator.
+    1. ``_circuit(self, params, *args)`` - builds the parameterised circuit.
+    2. ``_hamiltonian_terms(self)`` - returns list of Hamiltonian terms.
+    3. ``get_full_hamiltonian(self)`` - returns the sparse Hamiltonian operator.
 
     Everything else (optimisation loop, logging, initialisation, etc.) is
     provided here and works for *any* ansatz that respects those contracts.

@@ -15,7 +15,7 @@ from jax import numpy as jnp
 Lx = 2
 Ly = 2
 num_qubits=8
-nlayers = num_qubits
+nlayers = 2
 howoften_toreset = nlayers-1
 howoften_tosave = 10
 # tc_ = ToricCode(Lx,Ly)
@@ -59,10 +59,10 @@ if __name__ == "__main__":
         trials=trials,
         maxiter=maxiter,
         howoften_tosave=howoften_tosave,
-        use_prob_resets=False,
-        sparse=False,
-        perform_noisy_simulations=True,
-        noise_rate=5e-2,
+        use_prob_resets=True,
+        sparse=True,
+        perform_noisy_simulations=False,
+        #noise_rate=5e-2,
         number_of_shots=2000
         )
     final_energies, final_parameters, all_energy_values, all_purity_values = ansatz.optimize(save_results=True)
