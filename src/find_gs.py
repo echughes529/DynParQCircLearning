@@ -47,6 +47,7 @@ tc.set_contractor("custom", optimizer=optr, preprocessing=True)
 import optax
 
 from src.utilities.generate_ansatz import *
+from src.utilities.generate_ansatz import get_prob_reset_theta_mean_toriccode
 from src.utilities.result_saver import ResultSaver
 
 def _make_jit_helpers(ansatz: Any) -> Tuple[Callable, Callable]:
@@ -233,8 +234,15 @@ class VariationalAnsatz(abc.ABC):
         tuple : (final_energies, final_parameters, all_energies, all_purities)
         """
         params = jnp.array(self.initparams)
-        self.allpurities = np.zeros((self.trials, 1 + (self.maxiter - 1) // self.howoften_tosave))
-        self.allenergies = np.zeros((self.trials, 1 + (self.maxiter - 1) // self.howoften_tosave))
+        nsnapshots = 1 + (self.maxiter - 1) // self.howoften_tosave
+        self.allpurities = np.zeros((self.trials, nsnapshots))
+        self.allenergies = np.zeros((self.trials, nsnapshots))
+
+        if getattr(self, "use_prob_resets", False):
+            self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan)
+        else:
+            self.all_prob_reset_theta_means = None
+
         counter = 0
         optimizer = optax.adam(learning_rate=self.learning_rate)
         opt_state = optimizer.init(params)
@@ -257,8 +265,25 @@ class VariationalAnsatz(abc.ABC):
                 
                 if i % self.howoften_tosave == 0:
                     self.allenergies[:, counter] = value
+
                     if track_purity:
                         self.allpurities[:, counter] = purity_vec(self, params)
+
+                    if getattr(self, "use_prob_resets", False):
+                        params_np = np.asarray(params)
+                        theta_means = np.array([
+                            get_prob_reset_theta_mean_toriccode(
+                                params_np[t],
+                                self.Lx,
+                                self.Ly,
+                                nlayers=self.nlayers,
+                                reset_qubits=self.which_qubits_for_prob_reset,
+                                reset_direction=self.prob_reset_direction,
+                            )
+                            for t in range(self.trials)
+                        ])
+                        self.all_prob_reset_theta_means[:, counter] = theta_means
+
                     counter += 1
                     pbar.set_postfix_str(f"Current value: {str(jnp.min(value))}")
 

@@ -1,7 +1,8 @@
+import csv
 import numpy as np
 import os
 
-# use a non-interactive backend for headless environments 
+# use a non-interactive backend for headless environments
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -10,8 +11,106 @@ from src.utilities.generate_toric_code_hamiltonian import ToricCode
 from src.utilities.ansatz_classes import ToricCodeAnsatz
 
 
-def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201,howoften_tosave=10, 
-                   unitary=True, sparse=True, perform_noisy_simulations=False,number_of_shots=1000,use_prob_resets=False,
+def _extract_prob_reset_theta_history_from_ansatz(ansatz):
+    """
+    Try to extract a per-trial, per-snapshot history of mean probabilistic-reset
+    theta values from the ansatz object.
+
+    Expected shape:
+        (trials, n_snapshots)
+
+    This helper is deliberately defensive because different local branches may
+    store the history under different attribute names.
+    """
+    candidate_names = [
+        "all_prob_reset_theta_means",
+        "prob_reset_theta_means_all",
+        "prob_reset_theta_history",
+        "all_prob_reset_theta_history",
+        "all_theta_means",
+        "theta_means_history",
+    ]
+
+    for name in candidate_names:
+        if hasattr(ansatz, name):
+            value = getattr(ansatz, name)
+            if value is None:
+                continue
+            arr = np.asarray(value, dtype=float)
+            if arr.ndim == 2:
+                return arr
+
+    return None
+
+
+def save_prob_reset_theta_mean_csv(results, csv_path):
+    """
+    Save a CSV containing the average probabilistic-reset theta value across
+    trials at each saved training step.
+
+    One row is written for each `(h, training_step)` pair.
+
+    Notes
+    -----
+    This expects each `results[h]` entry to contain a key
+    `"all_prob_reset_theta_means"` with shape `(trials, n_snapshots)`.
+    If that data is not available from the ansatz branch currently in use,
+    the function writes nothing and prints a warning.
+    """
+    rows = []
+
+    for h in h_list:
+        result_for_h = results[h]
+        theta_history = result_for_h.get("all_prob_reset_theta_means")
+
+        if theta_history is None:
+            continue
+
+        theta_history = np.asarray(theta_history, dtype=float)
+        if theta_history.ndim != 2:
+            continue
+
+        mean_theta = theta_history.mean(axis=0)
+        std_theta = theta_history.std(axis=0)
+
+        for step, mean_val, std_val in zip(steps, mean_theta, std_theta):
+            rows.append(
+                {
+                    "h": h,
+                    "training_step": int(step),
+                    "mean_theta_across_trials": float(mean_val),
+                    "std_theta_across_trials": float(std_val),
+                }
+            )
+
+    if not rows:
+        print(
+            "Warning: no probabilistic-reset theta history was found on the ansatz object, "
+            "so no theta CSV was written. The plotting script is ready, but the optimisation "
+            "code must expose a per-trial theta history first."
+        )
+        return None
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "h",
+                "training_step",
+                "mean_theta_across_trials",
+                "std_theta_across_trials",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Saved probabilistic-reset theta CSV to: {csv_path}")
+    return csv_path
+
+
+def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
+                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
                    ):
 
     if nlayers_current is None:
@@ -38,7 +137,12 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
         )
 
         final_E, final_purity, all_E, all_P = ansatz.optimize()
-        results[h] = (all_E, all_P)
+        all_prob_reset_theta_means = _extract_prob_reset_theta_history_from_ansatz(ansatz)
+        results[h] = {
+            "all_E": all_E,
+            "all_P": all_P,
+            "all_prob_reset_theta_means": all_prob_reset_theta_means,
+        }
 
     return results
 
@@ -46,7 +150,7 @@ def plotting(results):
         # make plots for given h values
         plt.figure(figsize=(5, 4))
         for h, c in zip(h_list, colours):
-            all_E, _ = results[h]      # all_E shape: (trials, n_snapshots)
+            all_E = results[h]["all_E"]      # all_E shape: (trials, n_snapshots)
 
             mean_E = all_E.mean(axis=0)
             std_E  = all_E.std(axis=0)
@@ -88,10 +192,10 @@ def plotting(results):
 # ----------------------------------------------------------------------------------------------
 Lx = 2
 Ly = 2
-nlayers = 2
+nlayers = 1
 howoften_tosave = 10
-trials = 20      
-maxiter = 301
+trials = 1      
+maxiter = 101
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -142,3 +246,5 @@ if __name__ == "__main__":
                              use_prob_resets=use_prob_resets,
                              )
     plotting(results)
+    theta_csv_path = os.path.join(outdir, "prob_reset_theta_means_by_step.csv")
+    save_prob_reset_theta_mean_csv(results, theta_csv_path)
