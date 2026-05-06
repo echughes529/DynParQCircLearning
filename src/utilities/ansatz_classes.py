@@ -45,7 +45,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     prob_reset_direction: int = 1 # vertical
 
     use_small_angle_initialization: bool = False
-    range_initial_parameters: float = jnp.pi
+    range_initial_parameters: float = 0
 
     unitary: bool = False
 
@@ -96,7 +96,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         weights = np.concatenate((weights, perturbed_weights))
         return qu.PauliStringSum2COO(strings, weights)
 
-    def _initialise_parameters(self):
+    def _initialise_parameters_oooold(self):
         """Initialize parameters with optional small angle range."""
         randint = np.random.randint(1e5)
         key = jax.random.PRNGKey(randint)
@@ -109,8 +109,51 @@ class ToricCodeAnsatz(VariationalAnsatz):
         
         return jax.random.uniform(
             key, shape=[self.trials, self.nparams], 
-            minval=0, maxval=jnp.pi
+            minval=0, maxval=0.3 # ----------------TEMPORARY TEST ---- REMEMBER TO REMOVE----------
         )
+        
+    def _initialise_parameters(self):
+        """Initialize parameters with optional small angle range."""
+        randint = np.random.randint(1e5)
+        key = jax.random.PRNGKey(randint)
+
+        if self.use_small_angle_initialization:
+            return jax.random.uniform(
+                key,
+                shape=[self.trials, self.nparams],
+                minval=0,
+                maxval=self.range_initial_parameters
+            )
+
+        # First initialise all parameters in [0, pi]
+        key_all, key_reset = jax.random.split(key)
+        params = jax.random.uniform(
+            key_all,
+            shape=[self.trials, self.nparams],
+            minval=0.0,
+            maxval=jnp.pi
+        )
+
+        # If using probabilistic resets, overwrite the reset parameters
+        # with very small values in [0, 1e-5]
+        if self.use_prob_resets:
+            n_reset = self.total_resets
+            reset_vals = jax.random.uniform(
+                key_reset,
+                shape=[self.trials, n_reset],
+                minval=0.0,
+                maxval=1e-5
+            )
+
+            # reset parameters sit between the two-qubit block and the final
+            # single-qubit block
+            n_two_qubit = self.nplaquettes * 3 * 9 * self.nlayers
+            reset_start = n_two_qubit
+            reset_end = reset_start + n_reset
+
+            params = params.at[:, reset_start:reset_end].set(reset_vals)
+
+        return params
 
     def _circuit(self, params, *args, seed=None):
         """Construct the circuit based on ansatz type."""

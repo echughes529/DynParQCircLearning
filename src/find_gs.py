@@ -146,7 +146,7 @@ class VariationalAnsatz(abc.ABC):
         randint = np.random.randint(1e5)
         key = jax.random.PRNGKey(randint)
         return jax.random.uniform(key, shape=[self.trials, self.nparams],
-                                 minval=0, maxval=jnp.pi)
+                                 minval=0, maxval=0)
 
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
