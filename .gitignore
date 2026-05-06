@@ -8,4 +8,4 @@ logs/*
 docs/*
 .whitesource
 outputs/*
-venv/
+eddie_py312_venv/
