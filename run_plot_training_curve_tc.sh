@@ -1,7 +1,7 @@
 #!/bin/bash
 #$ -N dpqc_plot
 #$ -cwd
-#$ -l h_rt=02:00:00
+#$ -l h_rt=12:00:00
 #$ -l h_vmem=16G
 #$ -o /dev/null
 #$ -e /dev/null
