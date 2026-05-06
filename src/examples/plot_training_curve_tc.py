@@ -45,10 +45,11 @@ def _extract_prob_reset_theta_history_from_ansatz(ansatz):
 
 def save_prob_reset_theta_mean_csv(results, csv_path):
     """
-    Save a CSV containing the average probabilistic-reset theta value across
-    trials at each saved training step.
+    Save a CSV containing the per-trial probabilistic-reset theta value at each
+    saved training step, together with the across-trial mean and standard
+    deviation at that same step.
 
-    One row is written for each `(h, training_step)` pair.
+    One row is written for each `(h, trial, training_step)` triple.
 
     Notes
     -----
@@ -73,15 +74,21 @@ def save_prob_reset_theta_mean_csv(results, csv_path):
         mean_theta = theta_history.mean(axis=0)
         std_theta = theta_history.std(axis=0)
 
-        for step, mean_val, std_val in zip(steps, mean_theta, std_theta):
-            rows.append(
-                {
-                    "h": h,
-                    "training_step": int(step),
-                    "mean_theta_across_trials": float(mean_val),
-                    "std_theta_across_trials": float(std_val),
-                }
-            )
+        n_trials, n_available_snapshots = theta_history.shape
+        steps_for_h = steps[:n_available_snapshots]
+
+        for trial_idx in range(n_trials):
+            for snapshot_idx, step in enumerate(steps_for_h):
+                rows.append(
+                    {
+                        "h": h,
+                        "trial": int(trial_idx + 1),
+                        "training_step": int(step),
+                        "theta_value": float(theta_history[trial_idx, snapshot_idx]),
+                        "mean_theta_across_trials": float(mean_theta[snapshot_idx]),
+                        "std_theta_across_trials": float(std_theta[snapshot_idx]),
+                    }
+                )
 
     if not rows:
         print(
@@ -97,7 +104,9 @@ def save_prob_reset_theta_mean_csv(results, csv_path):
             f,
             fieldnames=[
                 "h",
+                "trial",
                 "training_step",
+                "theta_value",
                 "mean_theta_across_trials",
                 "std_theta_across_trials",
             ],
@@ -172,14 +181,14 @@ def plotting(results):
         
         plt.xlabel("Training steps")
         plt.ylabel("E/n")
-        plt.title(f"Energy Density")
+        plt.title(f"3x3 resets off, nlayers = 2")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
         os.makedirs(outdir, exist_ok=True)
         
         # ------------------------------------------------------------------------------------------------------------
-        fname = os.path.join(outdir, f"training_curve.png") 
+        fname = os.path.join(outdir, f"3x3_resets_off.png") 
         # ------------------------------------------------------------------------------------------------------------
         
         plt.savefig(fname, dpi=200)
@@ -187,22 +196,24 @@ def plotting(results):
         print(f"Saved plot to: {fname}")
 
 
-# ----------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
-# ----------------------------------------------------------------------------------------------
-Lx = 2
-Ly = 2
-nlayers = 1
+# ---------------------------------------------------------------------------------------------------------------------
+Lx = 3
+Ly = 3
+nlayers = 2
 howoften_tosave = 10
-trials = 1      
-maxiter = 101
+trials = 200      
+maxiter = 2001
 howoften_toreset = 7
 unitary = True
 sparse = True
 perform_noisy_simulations = False
 noise_rate = 5e-2
-number_of_shots = 600
-use_prob_resets = True
+number_of_shots = 5000
+use_prob_resets = False
+# ---------------------------------------------------------------------------------------------------------------------
+
 
 tc_ = ToricCode(Lx, Ly)
 n_qubits = tc_.num_qubits   
@@ -246,5 +257,5 @@ if __name__ == "__main__":
                              use_prob_resets=use_prob_resets,
                              )
     plotting(results)
-    theta_csv_path = os.path.join(outdir, "prob_reset_theta_means_by_step.csv")
+    theta_csv_path = os.path.join(outdir, "prob_reset_theta_by_trial_and_step.csv")
     save_prob_reset_theta_mean_csv(results, theta_csv_path)
