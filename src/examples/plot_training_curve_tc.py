@@ -118,6 +118,70 @@ def save_prob_reset_theta_mean_csv(results, csv_path):
     return csv_path
 
 
+# ------------------------------------------------------------------------------------------------------------
+# Save raw per-trial training histories to CSV
+# ------------------------------------------------------------------------------------------------------------
+def save_training_history_csv(results, csv_path):
+    """
+    Save raw per-trial training histories to CSV so plots can be regenerated
+    later without rerunning the optimisation.
+
+    One row is written for each `(h, trial, training_step)` triple.
+    """
+    rows = []
+
+    for h in h_list:
+        result_for_h = results[h]
+
+        all_E = np.asarray(result_for_h["all_E"], dtype=float)
+        all_P = result_for_h.get("all_P")
+        all_P = None if all_P is None else np.asarray(all_P, dtype=float)
+
+        n_trials, n_available_snapshots = all_E.shape
+        steps_for_h = steps[:n_available_snapshots]
+
+        for trial_idx in range(n_trials):
+            for snapshot_idx, step in enumerate(steps_for_h):
+                row = {
+                    "h": h,
+                    "trial": int(trial_idx + 1),
+                    "training_step": int(step),
+                    "energy": float(all_E[trial_idx, snapshot_idx]),
+                    "energy_density": float(all_E[trial_idx, snapshot_idx] / n_qubits),
+                    "energy_density_minus_reference": float(
+                        (all_E[trial_idx, snapshot_idx] / n_qubits) - E_dens_ref_dict[h]
+                    ),
+                }
+
+                if all_P is not None and all_P.ndim == 2:
+                    row["purity"] = float(all_P[trial_idx, snapshot_idx])
+                else:
+                    row["purity"] = ""
+
+                rows.append(row)
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "h",
+                "trial",
+                "training_step",
+                "energy",
+                "energy_density",
+                "energy_density_minus_reference",
+                "purity",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Saved training history CSV to: {csv_path}")
+    return csv_path
+
+
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
                    ):
@@ -181,11 +245,12 @@ def plotting(results):
         
         plt.xlabel("Training steps")
         plt.ylabel("E/n")
-        plt.title(f"3x3 resets off, nlayers = 2")
+        plt.title(f"3x3 resets off, nlayers = 2, trials = 200")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
         os.makedirs(outdir, exist_ok=True)
+        plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x2
         
         # ------------------------------------------------------------------------------------------------------------
         fname = os.path.join(outdir, f"3x3_resets_off.png") 
@@ -203,14 +268,14 @@ Lx = 3
 Ly = 3
 nlayers = 2
 howoften_tosave = 10
-trials = 200      
+trials = 200    
 maxiter = 2001
 howoften_toreset = 7
 unitary = True
 sparse = True
 perform_noisy_simulations = False
 noise_rate = 5e-2
-number_of_shots = 5000
+number_of_shots = 500
 use_prob_resets = False
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -257,5 +322,9 @@ if __name__ == "__main__":
                              use_prob_resets=use_prob_resets,
                              )
     plotting(results)
+
+    training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
+    save_training_history_csv(results, training_history_csv_path)
+
     theta_csv_path = os.path.join(outdir, "prob_reset_theta_by_trial_and_step.csv")
     save_prob_reset_theta_mean_csv(results, theta_csv_path)
