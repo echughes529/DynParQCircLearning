@@ -165,6 +165,7 @@ def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=
         # nlayers = max(Lx,Ly)
         nlayers = 2
     qc = tc.Circuit(nq+nplaquettes + nplaquettes * (nlayers//howoften), split=split_conf)
+    print(f"Total number of qubits (sys+aux- determinsitic resets): {nq+nplaquettes + nplaquettes * (nlayers//howoften)}")
     
     nmeasurements = nplaquettes * (nlayers//howoften)
     nparams = nplaquettes * 4 * 9 *nlayers + 0*nmeasurements + 3*nq
@@ -271,6 +272,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     
     # Create circuit with system qubits + ancillas
     qc = tc.Circuit(nq + nancillas, split=split_conf)
+    print(f"Total number of qubits (sys+aux- prob reset):{nq + nancillas}")
     
     # Calculate number of parameters needed:
     # - Unitaries: nplaquettes * 3 * 9 * nlayers (no more Cartan block connecting system qubits to plaquette ancillas, so 3 instead of 4)
