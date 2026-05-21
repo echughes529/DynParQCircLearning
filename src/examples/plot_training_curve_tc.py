@@ -1,6 +1,8 @@
 import csv
 import numpy as np
 import os
+import cProfile
+import pstats
 
 # use a non-interactive backend for headless environments
 import matplotlib
@@ -9,7 +11,9 @@ import matplotlib.pyplot as plt
 
 from src.utilities.generate_toric_code_hamiltonian import ToricCode
 from src.utilities.ansatz_classes import ToricCodeAnsatz
-
+# ------------------------------------------------------------------------------------------------------------
+# Save theta training history to CSV
+# ------------------------------------------------------------------------------------------------------------
 
 def _extract_prob_reset_theta_history_from_ansatz(ansatz):
     """
@@ -41,7 +45,6 @@ def _extract_prob_reset_theta_history_from_ansatz(ansatz):
                 return arr
 
     return None
-
 
 def save_prob_reset_theta_mean_csv(results, csv_path):
     """
@@ -117,7 +120,6 @@ def save_prob_reset_theta_mean_csv(results, csv_path):
     print(f"Saved probabilistic-reset theta CSV to: {csv_path}")
     return csv_path
 
-
 # ------------------------------------------------------------------------------------------------------------
 # Save raw per-trial training histories to CSV
 # ------------------------------------------------------------------------------------------------------------
@@ -183,7 +185,7 @@ def save_training_history_csv(results, csv_path):
 
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
-                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
+                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False, save_theta_history=False
                    ):
 
     if nlayers_current is None:
@@ -210,16 +212,19 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
         )
 
         final_E, final_purity, all_E, all_P = ansatz.optimize()
-        all_prob_reset_theta_means = _extract_prob_reset_theta_history_from_ansatz(ansatz)
+
         results[h] = {
             "all_E": all_E,
             "all_P": all_P,
-            "all_prob_reset_theta_means": all_prob_reset_theta_means,
         }
+
+        if save_theta_history:
+            all_prob_reset_theta_means = _extract_prob_reset_theta_history_from_ansatz(ansatz)
+            results[h]["all_prob_reset_theta_means"] = all_prob_reset_theta_means
 
     return results
 
-def plotting(results):
+def plotting(results, Lx, Ly):
         # make plots for given h values
         plt.figure(figsize=(5, 4))
         for h, c in zip(h_list, colours):
@@ -245,15 +250,16 @@ def plotting(results):
         
         plt.xlabel("Training steps")
         plt.ylabel("E/n")
-        plt.title(f"3x3 resets off, nlayers = 2, trials = 200")
+        plt.title(f"{Lx} x {Ly} profiling")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
         os.makedirs(outdir, exist_ok=True)
-        plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x2
+        #plt.axhline(y=-8/7, color = "tab:orange", linestyle = '--') # 3x2
+        #plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # 3x3
         
         # ------------------------------------------------------------------------------------------------------------
-        fname = os.path.join(outdir, f"3x3_resets_off.png") 
+        fname = os.path.join(outdir, f"{Lx}x{Ly}  training_curve.png") 
         # ------------------------------------------------------------------------------------------------------------
         
         plt.savefig(fname, dpi=200)
@@ -265,18 +271,20 @@ def plotting(results):
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
 Lx = 3
-Ly = 3
+Ly = 2
 nlayers = 2
 howoften_tosave = 10
 trials = 200    
 maxiter = 2001
-howoften_toreset = 7
+howoften_toreset = 1
 unitary = True
 sparse = True
 perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500
 use_prob_resets = False
+save_training_history = False
+save_theta_history = False
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -299,6 +307,10 @@ n_snapshots = 1 + maxiter // howoften_tosave
 steps = np.arange(n_snapshots) * howoften_tosave
 
 if __name__ == "__main__":
+    
+    profiler = cProfile.Profile()
+    profiler.enable()
+    
     # ------- Printing Parameters ---------
     print("===== Python run parameters =====")
     print(f"Lx={Lx}, Ly={Ly}")
@@ -320,11 +332,27 @@ if __name__ == "__main__":
                              perform_noisy_simulations=perform_noisy_simulations,
                              number_of_shots=number_of_shots,
                              use_prob_resets=use_prob_resets,
+                             save_theta_history=save_theta_history
                              )
-    plotting(results)
+    plotting(results, Lx, Ly)
 
-    training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
-    save_training_history_csv(results, training_history_csv_path)
+    
+    if save_training_history:
+        training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
+        save_training_history_csv(results, training_history_csv_path)
 
-    theta_csv_path = os.path.join(outdir, "prob_reset_theta_by_trial_and_step.csv")
-    save_prob_reset_theta_mean_csv(results, theta_csv_path)
+    if save_theta_history:
+        theta_csv_path = os.path.join(outdir, "prob_reset_theta_by_trial_and_step.csv")
+        save_prob_reset_theta_mean_csv(results, theta_csv_path)
+        
+    profiler.disable()
+
+    stats_path = os.path.join(outdir, "profile_stats.prof")
+
+    profiler.dump_stats(stats_path)
+
+    print(f"Saved profiler stats to: {stats_path}")
+
+    stats = pstats.Stats(profiler)
+
+    stats.sort_stats("cumtime").print_stats(50)
