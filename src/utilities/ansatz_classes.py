@@ -45,7 +45,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     prob_reset_direction: int = 1 # vertical
 
     use_small_angle_initialization: bool = False
-    range_initial_parameters: float = 0
+    range_initial_parameters: float = 1e-5
 
     unitary: bool = False
 
@@ -96,7 +96,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         weights = np.concatenate((weights, perturbed_weights))
         return qu.PauliStringSum2COO(strings, weights)
 
-    def _initialise_parameters_oooold(self):
+    def _initialise_parameters_old_version(self):
         """Initialize parameters with optional small angle range."""
         randint = np.random.randint(1e5)
         key = jax.random.PRNGKey(randint)
@@ -117,6 +117,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         randint = np.random.randint(1e5)
         key = jax.random.PRNGKey(randint)
 
+        # Small initial angles for all params
         if self.use_small_angle_initialization:
             return jax.random.uniform(
                 key,
@@ -126,7 +127,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
             )
 
         # First initialise all parameters in [0, pi]
-        key_all, key_reset = jax.random.split(key)
+        key_all, key_reset = jax.random.split(key) # ensuring resets params and gate params are not correlated
         params = jax.random.uniform(
             key_all,
             shape=[self.trials, self.nparams],

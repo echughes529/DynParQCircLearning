@@ -218,7 +218,7 @@ class VariationalAnsatz(abc.ABC):
         rho = qu.reduced_density_matrix(s, cut=list(cut))
         return K.exp(-qu.renyi_entropy(rho, 2))
 
-    def optimize(self, save_results: bool = False, track_purity: bool = False):
+    def optimize(self, save_results: bool = False, track_purity: bool = False, track_grad: bool = False):
         """
         Run optimization to find ground state.
         
@@ -237,6 +237,7 @@ class VariationalAnsatz(abc.ABC):
         nsnapshots = 1 + (self.maxiter - 1) // self.howoften_tosave
         self.allpurities = np.zeros((self.trials, nsnapshots))
         self.allenergies = np.zeros((self.trials, nsnapshots))
+        self.all_gradient_norms = np.zeros((self.trials, nsnapshots))
 
         if getattr(self, "use_prob_resets", False):
             self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan)
@@ -265,6 +266,8 @@ class VariationalAnsatz(abc.ABC):
                 
                 if i % self.howoften_tosave == 0:
                     self.allenergies[:, counter] = value
+                    grad_norms = jnp.linalg.norm(gradient, axis=1)
+                    self.all_gradient_norms[:, counter] = np.array(grad_norms)
 
                     if track_purity:
                         self.allpurities[:, counter] = purity_vec(self, params)
@@ -291,7 +294,7 @@ class VariationalAnsatz(abc.ABC):
         if save_results:
             self.save_results(value, params, self.allenergies, self.allpurities)
 
-        return value, params, self.allenergies, self.allpurities
+        return value, params, self.allenergies, self.allpurities, self.all_gradient_norms
 
     def save_results(self, final_energies, final_parameters, all_energies, all_purities,
                      save_individual: bool = True):

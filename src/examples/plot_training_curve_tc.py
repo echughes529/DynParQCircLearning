@@ -209,12 +209,12 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             use_prob_resets=use_prob_resets,
         )
 
-        final_E, final_purity, all_E, all_P = ansatz.optimize()
-        all_prob_reset_theta_means = _extract_prob_reset_theta_history_from_ansatz(ansatz)
+        final_E, final_purity, all_E, all_P, all_gradient_norms = ansatz.optimize()
+
         results[h] = {
             "all_E": all_E,
             "all_P": all_P,
-            "all_prob_reset_theta_means": all_prob_reset_theta_means,
+            "all_gradient_norms": all_gradient_norms,
         }
 
     return results
@@ -261,6 +261,56 @@ def plotting(results):
         print(f"Saved plot to: {fname}")
 
 
+# ------------------------------------------------------------------------------------------------------------
+# Plot gradient norms function
+# ------------------------------------------------------------------------------------------------------------
+def plot_gradient_norms(results, Lx, Ly):
+        plt.figure(figsize=(6, 4))
+
+        for h, c in zip(h_list, colours):
+            all_gradient_norms = results[h].get("all_gradient_norms")
+
+            if all_gradient_norms is None:
+                continue
+
+            all_gradient_norms = np.asarray(all_gradient_norms, dtype=float)
+
+            mean_grad = np.mean(all_gradient_norms, axis=0)
+            std_grad = np.std(all_gradient_norms, axis=0)
+
+            n_available_snapshots = mean_grad.shape[0]
+            steps_for_h = steps[:n_available_snapshots]
+
+            label = rf"$h = {h}$"
+
+            plt.plot(steps_for_h, mean_grad, color=c, label=label)
+
+            plt.fill_between(
+                steps_for_h,
+                mean_grad - std_grad,
+                mean_grad + std_grad,
+                color=c,
+                alpha=0.3,
+            )
+
+        plt.yscale("log")
+        plt.xlabel("Training steps")
+        plt.ylabel("Gradient norm")
+        plt.title(f"{Lx} x {Ly} gradient norms, Prob Resets: {use_prob_resets}")
+        plt.legend()
+        plt.tight_layout()
+        plt.grid(visible=True, which='both', linestyle='--')
+
+        os.makedirs(outdir, exist_ok=True)
+
+        fname = os.path.join(outdir, f"{Lx}x{Ly} gradient_norms, prob resets: {use_prob_resets}.png")
+
+        plt.savefig(fname, dpi=200)
+        plt.close()
+
+        print(f"Saved gradient norm plot to: {fname}")
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -277,6 +327,9 @@ perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500
 use_prob_resets = False
+save_training_history = False
+# ---------------------------------------------------------------------------------------------------------------------
+save_theta_history = False
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -321,10 +374,13 @@ if __name__ == "__main__":
                              number_of_shots=number_of_shots,
                              use_prob_resets=use_prob_resets,
                              )
-    plotting(results)
+    plotting(results, Lx, Ly)
+    plot_gradient_norms(results, Lx, Ly)
 
-    training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
-    save_training_history_csv(results, training_history_csv_path)
+    
+    if save_training_history:
+        training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
+        save_training_history_csv(results, training_history_csv_path)
 
     theta_csv_path = os.path.join(outdir, "prob_reset_theta_by_trial_and_step.csv")
     save_prob_reset_theta_mean_csv(results, theta_csv_path)
