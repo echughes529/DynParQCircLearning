@@ -292,6 +292,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     for l in range(nlayers):
         # Apply one set of unitaries
         qc, paramindex = onesetofunitaries(qc, claws, params, paramindex)
+        print(f"One set of unitaries applied, paramindex: {paramindex}")
         
         # Apply probabilistic resets every layer
         for sys_qubit in reset_qubits:
@@ -303,6 +304,10 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
             # This determines the probability of reset: |0⟩ cos(θ/2) + |1⟩ sin(θ/2)
             qc.ry(prob_ancilla, theta=params[paramindex])
             paramindex += 1
+            print(f"theta applied, param index: {paramindex}")
+            print(f"sys qubit: {sys_qubit}")
+            print(f"reset qubits: {reset_qubits}")
+        
             
             # Probabilistic reset implementation:
             # 1. Copy system qubit state to purification ancilla (controlled on prob_ancilla)
@@ -319,7 +324,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     
     # Final layer of single qubit unitaries on system qubits
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex, nq)
-    
+    print(f"single unitaries applied, param index: {paramindex}")
     return qc
 
 
