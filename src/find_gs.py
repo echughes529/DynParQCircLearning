@@ -237,9 +237,11 @@ class VariationalAnsatz(abc.ABC):
         nsnapshots = 1 + (self.maxiter - 1) // self.howoften_tosave
         self.allpurities = np.zeros((self.trials, nsnapshots))
         self.allenergies = np.zeros((self.trials, nsnapshots))
+        self.allparams = np.zeros((self.trials, nsnapshots, self.nparams))
+        self.allgrads = np.zeros((self.trials, nsnapshots, self.nparams))
 
         if getattr(self, "use_prob_resets", False):
-            self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan)
+            self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan) # trials x nsnapshots array initialised with null vector values
         else:
             self.all_prob_reset_theta_means = None
 
@@ -268,32 +270,23 @@ class VariationalAnsatz(abc.ABC):
 
                     if track_purity:
                         self.allpurities[:, counter] = purity_vec(self, params)
-
-                    if getattr(self, "use_prob_resets", False):
-                        params_np = np.asarray(params)
-                        theta_means = np.array([
-                            get_prob_reset_theta_mean_toriccode(
-                                params_np[t],
-                                self.Lx,
-                                self.Ly,
-                                nlayers=self.nlayers,
-                                reset_qubits=self.which_qubits_for_prob_reset,
-                                reset_direction=self.prob_reset_direction,
-                            )
-                            for t in range(self.trials)
-                        ])
-                        self.all_prob_reset_theta_means[:, counter] = theta_means
+                    
+                    if getattr(self, "track_params", False):
+                        self.allparams[:, counter, :] = params
+                        
+                    if getattr(self, "track_grads", False):
+                        self.allgrads[:, counter, :] = gradient
 
                     counter += 1
                     pbar.set_postfix_str(f"Current value: {str(jnp.min(value))}")
 
         # Optionally save results
         if save_results:
-            self.save_results(value, params, self.allenergies, self.allpurities)
+            self.save_results(value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads)
 
-        return value, params, self.allenergies, self.allpurities
+        return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads
 
-    def save_results(self, final_energies, final_parameters, all_energies, all_purities,
+    def save_results(self, final_energies, final_parameters, all_energies, all_purities, all_params, all_grads,
                      save_individual: bool = True):
         """
         Save optimization results to HDF5 files.
@@ -319,7 +312,7 @@ class VariationalAnsatz(abc.ABC):
         --------
         tuple : (master_file_path, individual_file_path or None)
         """
-        from src.utilities.result_saver import ResultSaver
+        
         
         # Initialize result saver
         saver = ResultSaver(self.lattice.name())
@@ -330,6 +323,8 @@ class VariationalAnsatz(abc.ABC):
             'final_parameters': np.array(final_parameters),
             'all_energies': np.array(all_energies),
             'all_purities': np.array(all_purities),
+            'all_params' : np.array(all_params),
+            'all_grads' : np.array(all_grads),
             'min_energy': float(np.min(final_energies)),
             'mean_energy': float(np.mean(final_energies)),
             'std_energy': float(np.std(final_energies))
@@ -348,17 +343,17 @@ class VariationalAnsatz(abc.ABC):
         
         return master_file, individual_file
 
-    def get_initial_costs(self, params=None):
-        """Get initial cost values for all trials."""
-        if params is None:
-            params = self.initparams
-        return self._costs_vmapped(params)
+def get_initial_costs(self, params=None):
+    """Get initial cost values for all trials."""
+    if params is None:
+        params = self.initparams
+    return self._costs_vmapped(params)
 
-    def get_initial_costs_and_gradients(self, params=None):
-        """Get initial costs and gradients for all trials."""
-        if params is None:
-            params = self.initparams
-        return self._cost_vvag(params)
+def get_initial_costs_and_gradients(self, params=None):
+    """Get initial costs and gradients for all trials."""
+    if params is None:
+        params = self.initparams
+    return self._cost_vvag(params)
 
 # JIT-compiled purity functions
 def _purity_wrapper(ansatz, params):

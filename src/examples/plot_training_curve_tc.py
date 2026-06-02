@@ -209,12 +209,12 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             use_prob_resets=use_prob_resets,
         )
 
-        final_E, final_purity, all_E, all_P = ansatz.optimize()
-        all_prob_reset_theta_means = _extract_prob_reset_theta_history_from_ansatz(ansatz)
+        final_E, final_purity, all_E, all_P, all_param, all_grads = ansatz.optimize()
         results[h] = {
             "all_E": all_E,
             "all_P": all_P,
-            "all_prob_reset_theta_means": all_prob_reset_theta_means,
+            "all_param": all_param,
+            "all_grads": all_grads
         }
 
     return results
@@ -260,15 +260,51 @@ def plotting(results):
         plt.close()
         print(f"Saved plot to: {fname}")
 
+def plotting_params(results, trial=0):
+    """
+    Only works for single value of h
+
+    Args:
+        results (_type_): _description_
+    """
+    # make plots for given h values
+    plt.figure(figsize=(5, 4))
+    h = h_list[0]
+    all_param = results[h]["all_param"]      # all_E shape: (trials, n_snapshots)
+    all_param_trial = all_param[trial]
+    
+    counter = 1
+    for param in all_param_trial:
+        plt.plot(steps, param, label=f"param: {counter}")
+        counter+=1
+
+    
+    plt.xlabel("Training steps")
+    plt.ylabel("param")
+    plt.title(f"params")
+    plt.legend()
+    plt.tight_layout()
+    plt.grid(visible=True, which='both', linestyle='--')
+    os.makedirs(outdir, exist_ok=True)
+    
+    # ------------------------------------------------------------------------------------------------------------
+    fname = os.path.join(outdir, f"params.png") 
+    # ------------------------------------------------------------------------------------------------------------
+    
+    plt.savefig(fname, dpi=200)
+    plt.close()
+    print(f"Saved plot to: {fname}")
+
+
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
-Ly = 3
-nlayers = 2
+Lx = 2
+Ly = 2
+nlayers = 1
 howoften_tosave = 10
-trials = 200    
+trials = 1   
 maxiter = 2001
 howoften_toreset = 7
 unitary = True
@@ -276,7 +312,7 @@ sparse = True
 perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500
-use_prob_resets = False
+use_prob_resets = True
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -322,6 +358,7 @@ if __name__ == "__main__":
                              use_prob_resets=use_prob_resets,
                              )
     plotting(results)
+    plotting_params(results)
 
     training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
     save_training_history_csv(results, training_history_csv_path)
