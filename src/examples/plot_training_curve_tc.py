@@ -183,7 +183,7 @@ def save_training_history_csv(results, csv_path):
 
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
-                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
+                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False, ansatz1=True
                    ):
 
     if nlayers_current is None:
@@ -207,6 +207,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             noise_rate=noise_rate,
             number_of_shots=number_of_shots,
             use_prob_resets=use_prob_resets,
+            ansatz1=ansatz1
         )
 
         final_E, final_purity, all_E, all_P, all_gradient_norms = ansatz.optimize()
@@ -265,7 +266,7 @@ def plotting(results):
         
         plt.xlabel("Training steps")
         plt.ylabel("E/n")
-        plt.title(f"{Lx}x{Ly} resets {use_prob_resets}, nlayers = {nlayers}, trials = {trials}")
+        plt.title(f"{Lx}x{Ly} resets {use_prob_resets}, nlayers = {nlayers}, trials = {trials}, ansatz1: {ansatz1}")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
@@ -458,12 +459,12 @@ def plot_prob_reset_theta_values(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
+Lx = 2
 Ly = 2
 nlayers = 1
 howoften_tosave = 10
-trials = 50
-maxiter = 101
+trials = 200
+maxiter = 2001
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -471,9 +472,10 @@ perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500
 use_prob_resets = True
-save_training_history = True
-save_theta_history = True
+save_training_history = False
+save_theta_history = False
 plot_each_trial = False
+ansatz1 = True
 
 
 tc_ = ToricCode(Lx, Ly)
@@ -517,6 +519,7 @@ if __name__ == "__main__":
                              perform_noisy_simulations=perform_noisy_simulations,
                              number_of_shots=number_of_shots,
                              use_prob_resets=use_prob_resets,
+                             ansatz1=ansatz1
                              )
     plotting(results)
     plot_gradient_norms(results)

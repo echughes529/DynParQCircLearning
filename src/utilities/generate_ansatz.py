@@ -204,7 +204,7 @@ def get_nresets_per_layer_toriccode(Lx, Ly, reset_direction=1):
     reset_qubits = [q for q in reset_qubits if q is not None]
     return len(reset_qubits)
 
-def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
+def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,ansatz1,nlayers = None):
     toriccode = ToricCode(Lx,Ly)
     nplaquettes = (Lx-1)*(Ly-1)
     nq = 2*Lx*Ly - Lx - Ly 
@@ -213,16 +213,25 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
         nlayers = 2
     qc = tc.Circuit(nq)
     
-    nparams = nplaquettes * 4 * 9 *nlayers + 3*nq
+    if ansatz1:
+        nparams = nplaquettes * 4 * 9 * nlayers + 3*nq
+    else:
+        nparams = nplaquettes * 3 * 9 * nlayers + 3*nq
+        
     if params.shape[0] != nparams:
         raise ValueError(f"Parameter vector has wrong size: got {params.shape[0]}, expected {nparams}.")
     
     paramindex = 0
-
-    claws = toriccode.all_claws_unitaries()
-    claws = [claws[i::4][j] for i in range(4) for j in range((Lx-1)*(Ly-1))] # Rearranges them so as to parallelise; still in steps of 4 because the last cartan block between qubit and ancilla is replaced by one between system qubits.
+    if ansatz1:
+        claws = toriccode.all_claws_unitaries()
+        claws = [claws[i::4][j] for i in range(4) for j in range((Lx-1)*(Ly-1))] 
+    else:
+        claws = toriccode.all_claws() # No more plaquette qubits
+        claws = [claws[i::3 ][j] for i in range(3) for j in range((Lx - 1) * (Ly - 1))]
+        
+    
     # plaquettes = [toriccode.qubit_index(x,y,2) for x in range(Lx-1) for y in range(Ly-1)]
-    measindex = 0
+
     for l in range(nlayers):
         qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
 
@@ -230,7 +239,7 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
     return qc
 
 
-def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1):
+def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, ansatz1, nlayers=None, reset_qubits=None, reset_direction=1):
     """
     Construct a dynamic circuit for toric code lattice with probabilistic resets on system qubits.
     
@@ -276,7 +285,11 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     # - Unitaries: nplaquettes * 3 * 9 * nlayers (no more Cartan block connecting system qubits to plaquette ancillas, so 3 instead of 4)
     # - Probability control: 1 parameter per reset (total_resets = nresets_per_layer * nlayers)
     # - Final single qubit unitaries: 3 * nq
-    nparams = nplaquettes * 3 * 9 * nlayers + total_resets + 3 * nq
+    
+    if ansatz1:
+        nparams = nplaquettes * 4 * 9 * nlayers + 3*nq
+    else:
+        nparams = nplaquettes * 3 * 9 * nlayers + 3*nq
     
     if len(params) != nparams:
         raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
@@ -284,9 +297,13 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     paramindex = 0
     
     # Prepare claws for unitaries
-    claws = toriccode.all_claws() # No more plaquette qubits
-    claws = [claws[i::3 ][j] for i in range(3) for j in range((Lx - 1) * (Ly - 1))]
-    
+    if ansatz1:
+        claws = toriccode.all_claws_unitaries()
+        claws = [claws[i::4][j] for i in range(4) for j in range((Lx-1)*(Ly-1))] 
+    else:
+        claws = toriccode.all_claws() # No more plaquette qubits
+        claws = [claws[i::3 ][j] for i in range(3) for j in range((Lx - 1) * (Ly - 1))]
+        
     ancilla_index = 0  # Track which ancilla pair to use
     
     for l in range(nlayers):

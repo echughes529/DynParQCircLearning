@@ -48,6 +48,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
     range_initial_parameters: float = 1e-5
 
     unitary: bool = False
+    
+    ansatz1: bool = True
 
     def __post_init__(self):
         self.lattice = ToricCode(self.Lx, self.Ly)
@@ -69,12 +71,16 @@ class ToricCodeAnsatz(VariationalAnsatz):
             self.nparams = (self.nplaquettes * 3 * 9 * self.nlayers + 
                           self.total_resets + 3 * self.lattice.num_qubits)
         elif self.unitary:
-            self.nparams = self.nplaquettes * 4 * 9 * self.nlayers + 3 * self.lattice.num_qubits
+            self.nparams = self.nplaquettes * 3 * 9 * self.nlayers + 3 * self.lattice.num_qubits
             self.nancillas = 0
         else:
             self.nmeasurements = self.nplaquettes * (self.nlayers // self.howoften_toreset)
             self.nancillas = self.nplaquettes + self.nmeasurements
             self.nparams = self.nplaquettes * 4 * 9 * self.nlayers + 3 * self.lattice.num_qubits
+        
+        if self.ansatz1: 
+            self.nparams += self.nplaquettes * 9 * self.nlayers # adding an extra 2 qubit gate for ansatz 1
+            
         
         print(self.__dict__)
         super().__post_init__()
@@ -109,7 +115,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         
         return jax.random.uniform(
             key, shape=[self.trials, self.nparams], 
-            minval=0, maxval=0.3 # ----------------TEMPORARY TEST ---- REMEMBER TO REMOVE----------
+            minval=0, maxval=np.pi 
         )
         
     def _initialise_parameters(self):
@@ -170,7 +176,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
             )
         elif self.unitary:
             return construct_unitary_circuit_toriccodelattice(
-                params, self.Lx, self.Ly, self.nlayers
+                params, self.Lx, self.Ly, self.ansatz1, self.nlayers
             )
         else:
             return construct_dyn_circuit_toriccodelattice(
