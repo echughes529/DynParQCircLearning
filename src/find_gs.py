@@ -218,7 +218,7 @@ class VariationalAnsatz(abc.ABC):
         rho = qu.reduced_density_matrix(s, cut=list(cut))
         return K.exp(-qu.renyi_entropy(rho, 2))
 
-    def optimize(self, save_results: bool = False, track_purity: bool = False):
+    def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False):
         """
         Run optimization to find ground state.
         
@@ -271,10 +271,10 @@ class VariationalAnsatz(abc.ABC):
                     if track_purity:
                         self.allpurities[:, counter] = purity_vec(self, params)
                     
-                    if getattr(self, "track_params", False):
+                    if track_params:
                         self.allparams[:, counter, :] = params
                         
-                    if getattr(self, "track_grads", False):
+                    if track_grads:
                         self.allgrads[:, counter, :] = gradient
 
                     counter += 1

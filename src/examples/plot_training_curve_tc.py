@@ -209,7 +209,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             use_prob_resets=use_prob_resets,
         )
 
-        final_E, final_purity, all_E, all_P, all_param, all_grads = ansatz.optimize()
+        final_E, final_purity, all_E, all_P, all_param, all_grads = ansatz.optimize(track_params= True, track_grads = True)
         results[h] = {
             "all_E": all_E,
             "all_P": all_P,
@@ -245,15 +245,15 @@ def plotting(results):
         
         plt.xlabel("Training steps")
         plt.ylabel("E/n")
-        plt.title(f"3x3 resets off, nlayers = 2, trials = 200")
+        plt.title(f"{Lx}x{Ly}, nlayers:{nlayers}, trials: {trials}, resets: {use_prob_resets}")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
         os.makedirs(outdir, exist_ok=True)
-        plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x2
+        #plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x2
         
         # ------------------------------------------------------------------------------------------------------------
-        fname = os.path.join(outdir, f"3x3_resets_off.png") 
+        fname = os.path.join(outdir, f"{Lx}x{Ly}_nlayers_{nlayers}_resets_{use_prob_resets}.png") 
         # ------------------------------------------------------------------------------------------------------------
         
         plt.savefig(fname, dpi=200)
@@ -270,19 +270,30 @@ def plotting_params(results, trial=0):
     # make plots for given h values
     plt.figure(figsize=(5, 4))
     h = h_list[0]
-    all_param = results[h]["all_param"]      # all_E shape: (trials, n_snapshots)
+    all_param = np.asarray(results[h]["all_param"], dtype=float)
+    print(f"all_param shape for h={h}: {all_param.shape}")
+    print(f"all_param min/max for h={h}: {np.nanmin(all_param)}, {np.nanmax(all_param)}")
+
+    if all_param.ndim != 3:
+        raise ValueError(
+            f"Expected all_param to have shape (trials, snapshots, nparams), "
+            f"but got shape {all_param.shape}"
+        )
+
     all_param_trial = all_param[trial]
-    
-    counter = 1
-    for param in all_param_trial:
-        plt.plot(steps, param, label=f"param: {counter}")
-        counter+=1
+
+    n_available_snapshots = all_param_trial.shape[0]
+    steps_for_h = steps[:n_available_snapshots]
+
+    for param_idx in range(all_param_trial.shape[1]):
+        plt.plot(steps_for_h, all_param_trial[:, param_idx], label=f"param: {param_idx + 1}")
 
     
     plt.xlabel("Training steps")
     plt.ylabel("param")
     plt.title(f"params")
-    plt.legend()
+    # There can be many parameters, so the legend can make this plot unreadable.
+    # plt.legend()
     plt.tight_layout()
     plt.grid(visible=True, which='both', linestyle='--')
     os.makedirs(outdir, exist_ok=True)
@@ -297,27 +308,100 @@ def plotting_params(results, trial=0):
 
 
 
+def plotting_thetas(results):
+    """
+    Plot the magnitude of the probabilistic-reset theta parameters for all trials.
+
+    Only works for a single value of h, using h_list[0].
+    Assumes the parameter vector is ordered as:
+        [two-qubit gate params][probabilistic-reset theta params][final single-qubit params]
+
+    This saves one plot per reset-theta parameter. Each plot contains all trials.
+    """
+    h = h_list[0]
+    all_param = np.asarray(results[h]["all_param"], dtype=float)
+
+    if all_param.ndim != 3:
+        raise ValueError(
+            f"Expected all_param to have shape (trials, snapshots, nparams), "
+            f"but got shape {all_param.shape}"
+        )
+
+    n_trials, n_available_snapshots, _ = all_param.shape
+    steps_for_h = steps[:n_available_snapshots]
+
+    n_resets_per_layer = (Lx - 1) * (Ly - 1) # number of plaquettes
+    n_reset_thetas = n_resets_per_layer * nlayers
+
+    theta_start = n_two_q_params_ron
+    theta_stop = theta_start + n_reset_thetas
+
+    theta_history = np.abs(all_param[:, :, theta_start:theta_stop])
+    # shape: (trials, snapshots, n_reset_thetas)
+
+    print(f"theta parameter indices: {theta_start} to {theta_stop - 1}")
+    print(f"abs(theta_history) shape: {theta_history.shape}")
+    print(f"abs(theta_history) min/max: {np.nanmin(theta_history)}, {np.nanmax(theta_history)}")
+
+    os.makedirs(outdir, exist_ok=True)
+
+    for theta_idx in range(n_reset_thetas):
+        plt.figure(figsize=(5, 4))
+
+        for trial_idx in range(n_trials):
+            plt.plot(
+                steps_for_h,
+                theta_history[trial_idx, :, theta_idx],
+                alpha=0.35,
+                linewidth=1,
+            )
+
+        mean_theta = theta_history[:, :, theta_idx].mean(axis=0)
+        plt.plot(
+            steps_for_h,
+            mean_theta,
+            color="black",
+            linewidth=2,
+            label="mean across trials",
+        )
+
+        plt.xlabel("Training steps")
+        plt.ylabel(r"Reset $|\theta|$")
+        plt.title(f"Reset |theta| {theta_idx + 1} across all trials")
+        plt.legend()
+        plt.tight_layout()
+        plt.grid(visible=True, which='both', linestyle='--')
+
+        fname = os.path.join(outdir, f"reset_abs_theta_{theta_idx + 1}_all_trials.png")
+        plt.savefig(fname, dpi=200)
+        plt.close()
+        print(f"Saved plot to: {fname}")
+
+
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 2
+Lx = 3
 Ly = 2
-nlayers = 1
+nlayers = 3
 howoften_tosave = 10
-trials = 1   
-maxiter = 2001
+trials = 100
+maxiter = 1201
 howoften_toreset = 7
 unitary = True
 sparse = True
 perform_noisy_simulations = False
 noise_rate = 5e-2
-number_of_shots = 500
+number_of_shots = 500 
 use_prob_resets = True
 # ---------------------------------------------------------------------------------------------------------------------
 
 
 tc_ = ToricCode(Lx, Ly)
 n_qubits = tc_.num_qubits   
+n_two_q_params_ron = 3 * (Lx-1) * (Ly-1) * 9 * nlayers
 
 # comments are my very rough estimates from graph in paper
 E_dens_ref_dict = {
@@ -329,7 +413,7 @@ E_dens_ref_dict = {
 # Allow job scripts (e.g. Eddie/Grid Engine) to set a per-run output directory.
 # Falls back to a local "outputs" folder when DPQC_OUTDIR is not set.
 outdir = os.environ.get("DPQC_OUTDIR", "outputs")
-h_list    = [0.0, 0.12, 0.96]
+h_list    = [0.0] 
 colours   = ["tab:orange", "tab:blue", "turquoise"]
 n_snapshots = 1 + maxiter // howoften_tosave
 steps = np.arange(n_snapshots) * howoften_tosave
@@ -359,6 +443,7 @@ if __name__ == "__main__":
                              )
     plotting(results)
     plotting_params(results)
+    plotting_thetas(results)
 
     training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
     save_training_history_csv(results, training_history_csv_path)
