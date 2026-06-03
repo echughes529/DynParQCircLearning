@@ -8,3 +8,5 @@ optax
 cotengra
 tqdm
 h5py
+tensorflow
+matplotlib
