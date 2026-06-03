@@ -95,22 +95,6 @@ class ToricCodeAnsatz(VariationalAnsatz):
         strings.extend(perturbed_strings)
         weights = np.concatenate((weights, perturbed_weights))
         return qu.PauliStringSum2COO(strings, weights)
-
-    def _initialise_parameters_oooold(self):
-        """Initialize parameters with optional small angle range."""
-        randint = np.random.randint(1e5)
-        key = jax.random.PRNGKey(randint)
-
-        if self.use_small_angle_initialization:
-            return jax.random.uniform(
-                key, shape=[self.trials, self.nparams], 
-                minval=0, maxval=self.range_initial_parameters
-            )
-        
-        return jax.random.uniform(
-            key, shape=[self.trials, self.nparams], 
-            minval=0, maxval=0.3 # ----------------TEMPORARY TEST ---- REMEMBER TO REMOVE----------
-        )
         
     def _initialise_parameters(self):
         """Initialize parameters with optional small angle range."""
