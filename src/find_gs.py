@@ -151,6 +151,8 @@ class VariationalAnsatz(abc.ABC):
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
         qc = self._circuit(params, seed)
+        bond_dim = getattr(qc, "split", {}).get("max_singular_values") # if the qc has the attr split, it will return bond dim
+        self.last_bond_dim = bond_dim
         
         if self.sparse:
             # Warn if noise is requested with sparse mode
@@ -218,7 +220,7 @@ class VariationalAnsatz(abc.ABC):
         rho = qu.reduced_density_matrix(s, cut=list(cut))
         return K.exp(-qu.renyi_entropy(rho, 2))
 
-    def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False):
+    def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False, track_bond_dim: bool = False):
         """
         Run optimization to find ground state.
         
@@ -228,6 +230,8 @@ class VariationalAnsatz(abc.ABC):
             If True, automatically save results after optimization completes
         track_purity : bool
             If True, track purity during optimization
+        track_bond_dim : bool
+            If True, track the maximum bond dimension for each trial during optimization.
             
         Returns:
         --------
@@ -239,6 +243,7 @@ class VariationalAnsatz(abc.ABC):
         self.allenergies = np.zeros((self.trials, nsnapshots))
         self.allparams = np.zeros((self.trials, nsnapshots, self.nparams))
         self.allgrads = np.zeros((self.trials, nsnapshots, self.nparams))
+        self.all_bond_dims = np.zeros((self.trials, nsnapshots))
 
         if getattr(self, "use_prob_resets", False):
             self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan) # trials x nsnapshots array initialised with null vector values
@@ -276,17 +281,29 @@ class VariationalAnsatz(abc.ABC):
                         
                     if track_grads:
                         self.allgrads[:, counter, :] = gradient
+                        
+                    if track_bond_dim and self.sparse:
+                        bond_dims = []
+                        for trial in range(self.trials):
+                            _ = self.energy_from_params(params[trial]) # reconstruct parameterised ansatz, will update 
+                            bond_dim = self.last_bond_dim
+                            if bond_dim is None:
+                                bond_dims.append(np.nan)
+                            else:
+                                bond_dims.append(np.max(np.asarray(bond_dim)))
+
+                        self.all_bond_dims[:, counter] = np.asarray(bond_dims)
 
                     counter += 1
                     pbar.set_postfix_str(f"Current value: {str(jnp.min(value))}")
 
         # Optionally save results
         if save_results:
-            self.save_results(value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads)
+            self.save_results(value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_bond_dims)
 
-        return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads
+        return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_bond_dims
 
-    def save_results(self, final_energies, final_parameters, all_energies, all_purities, all_params, all_grads,
+    def save_results(self, final_energies, final_parameters, all_energies, all_purities, all_params, all_grads, all_bond_dims,
                      save_individual: bool = True):
         """
         Save optimization results to HDF5 files.
@@ -325,6 +342,7 @@ class VariationalAnsatz(abc.ABC):
             'all_purities': np.array(all_purities),
             'all_params' : np.array(all_params),
             'all_grads' : np.array(all_grads),
+            'all_bond_dims' : np.array(all_bond_dims),
             'min_energy': float(np.min(final_energies)),
             'mean_energy': float(np.mean(final_energies)),
             'std_energy': float(np.std(final_energies))

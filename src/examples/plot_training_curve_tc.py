@@ -209,12 +209,17 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             use_prob_resets=use_prob_resets,
         )
 
-        final_E, final_purity, all_E, all_P, all_param, all_grads = ansatz.optimize(track_params= True, track_grads = True)
+        final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims = ansatz.optimize(
+            track_params=True,
+            track_grads=True,
+            track_bond_dim=True,
+        )
         results[h] = {
             "all_E": all_E,
             "all_P": all_P,
             "all_param": all_param,
-            "all_grads": all_grads
+            "all_grads": all_grads,
+            "all_bond_dims": all_bond_dims,
         }
 
     return results
@@ -379,13 +384,80 @@ def plotting_thetas(results):
 
 
 
+def plotting_bond_dims(results):
+    """
+    Plot the tracked maximum bond dimension for all trials over training.
+
+    This saves one plot per h value. Each plot contains all trials, plus the
+    mean across trials.
+    """
+    os.makedirs(outdir, exist_ok=True)
+
+    for h in h_list:
+        all_bond_dims = results[h].get("all_bond_dims")
+
+        if all_bond_dims is None:
+            print(f"No bond-dimension history found for h={h}; skipping bond-dim plot.")
+            continue
+
+        all_bond_dims = np.asarray(all_bond_dims, dtype=float)
+
+        if all_bond_dims.ndim != 2:
+            raise ValueError(
+                f"Expected all_bond_dims to have shape (trials, snapshots), "
+                f"but got shape {all_bond_dims.shape} for h={h}"
+            )
+
+        n_trials, n_available_snapshots = all_bond_dims.shape
+        steps_for_h = steps[:n_available_snapshots]
+
+        print(f"all_bond_dims shape for h={h}: {all_bond_dims.shape}")
+        print(f"all_bond_dims min/max for h={h}: {np.nanmin(all_bond_dims)}, {np.nanmax(all_bond_dims)}")
+
+        plt.figure(figsize=(5, 4))
+
+        for trial_idx in range(n_trials):
+            plt.plot(
+                steps_for_h,
+                all_bond_dims[trial_idx],
+                alpha=0.35,
+                linewidth=1,
+                label=f"trial {trial_idx + 1}" if n_trials <= 10 else None,
+            )
+
+        mean_bond_dim = np.nanmean(all_bond_dims, axis=0)
+        plt.plot(
+            steps_for_h,
+            mean_bond_dim,
+            color="black",
+            linewidth=2,
+            label="mean across trials",
+        )
+
+        plt.xlabel("Training steps")
+        plt.ylabel("Max bond dimension")
+        plt.title(f"Bond dimension, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
+        if n_trials <= 10:
+            plt.legend()
+        else:
+            plt.legend(["mean across trials"])
+        plt.tight_layout()
+        plt.grid(visible=True, which='both', linestyle='--')
+
+        fname = os.path.join(outdir, f"bond_dim_h_{h}_all_trials.png")
+        plt.savefig(fname, dpi=200)
+        plt.close()
+        print(f"Saved bond-dimension plot to: {fname}")
+
+
+
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
 Lx = 3
 Ly = 2
-nlayers = 3
+nlayers = 2
 howoften_tosave = 10
 trials = 100
 maxiter = 1201
@@ -444,6 +516,7 @@ if __name__ == "__main__":
     plotting(results)
     plotting_params(results)
     plotting_thetas(results)
+    plotting_bond_dims(results)
 
     training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
     save_training_history_csv(results, training_history_csv_path)
