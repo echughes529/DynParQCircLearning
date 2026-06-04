@@ -182,6 +182,63 @@ def save_training_history_csv(results, csv_path):
     return csv_path
 
 
+# ------------------------------------------------------------------------------------------------------------
+# Save final energies per trial to CSV
+# ------------------------------------------------------------------------------------------------------------
+def save_final_energies_csv(results, csv_path):
+    """
+    Save one row per trial containing the final energy and final energy density.
+    """
+    rows = []
+
+    for h in h_list:
+        result_for_h = results[h]
+
+        final_E = np.asarray(result_for_h["final_E"], dtype=float)
+        final_purity = result_for_h.get("final_purity")
+        final_purity = None if final_purity is None else np.asarray(final_purity, dtype=float)
+
+        n_trials = final_E.shape[0]
+
+        for trial_idx in range(n_trials):
+            row = {
+                "h": h,
+                "trial": int(trial_idx + 1),
+                "final_energy": float(final_E[trial_idx]),
+                "final_energy_density": float(final_E[trial_idx] / n_qubits),
+                "final_energy_density_minus_reference": float(
+                    (final_E[trial_idx] / n_qubits) - E_dens_ref_dict[h]
+                ),
+            }
+
+            if final_purity is not None and final_purity.ndim == 1:
+                row["final_purity"] = float(final_purity[trial_idx])
+            else:
+                row["final_purity"] = ""
+
+            rows.append(row)
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "h",
+                "trial",
+                "final_energy",
+                "final_energy_density",
+                "final_energy_density_minus_reference",
+                "final_purity",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Saved final energies CSV to: {csv_path}")
+    return csv_path
+
+
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
                    ):
@@ -210,16 +267,16 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims = ansatz.optimize(
-            track_params=True,
-            track_grads=True,
-            track_bond_dim=True,
+            track_params=track_params,
+            track_grads=track_grads,
+            track_bond_dim=track_bond_dim,
         )
         results[h] = {
+            "final_E": final_E,
+            "final_purity": final_purity,
             "all_E": all_E,
             "all_P": all_P,
             "all_param": all_param,
-            "all_grads": all_grads,
-            "all_bond_dims": all_bond_dims,
         }
 
     return results
@@ -255,7 +312,13 @@ def plotting(results):
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
         os.makedirs(outdir, exist_ok=True)
-        #plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x2
+        if Lx==2 and Ly==2:
+            plt.axhline(y=-5/4, color = "tab:orange", linestyle = '--') # for 2x2
+        if Lx==3:
+            if Ly==2:
+                plt.axhline(y=-8/7, color = "tab:orange", linestyle = '--') # for 3x2
+            if Ly == 3:
+                plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x3
         
         # ------------------------------------------------------------------------------------------------------------
         fname = os.path.join(outdir, f"{Lx}x{Ly}_nlayers_{nlayers}_resets_{use_prob_resets}.png") 
@@ -357,7 +420,7 @@ def plotting_thetas(results):
             plt.plot(
                 steps_for_h,
                 theta_history[trial_idx, :, theta_idx],
-                alpha=0.35,
+                alpha=0.7,
                 linewidth=1,
             )
 
@@ -377,10 +440,49 @@ def plotting_thetas(results):
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
 
+
         fname = os.path.join(outdir, f"reset_abs_theta_{theta_idx + 1}_all_trials.png")
         plt.savefig(fname, dpi=200)
         plt.close()
         print(f"Saved plot to: {fname}")
+
+
+# ------------------------------------------------------------------------------------------------------------
+# Plotting final energies per trial
+# ------------------------------------------------------------------------------------------------------------
+def plotting_final_energies(results):
+    """
+    Plot the final energy density for each trial, with a reference ground-state
+    energy density line for the current lattice size.
+    """
+    os.makedirs(outdir, exist_ok=True)
+
+    for h in h_list:
+        final_E = np.asarray(results[h]["final_E"], dtype=float)
+        trial_numbers = np.arange(1, final_E.shape[0] + 1)
+        final_E_density = final_E / n_qubits
+
+        plt.figure(figsize=(5, 4))
+        plt.plot(trial_numbers, final_E_density, marker="o", linestyle="None")
+
+        if Lx == 2 and Ly == 2:
+            plt.axhline(y=-5/4, linestyle="--")  # for 2x2
+        if Lx == 3:
+            if Ly == 2:
+                plt.axhline(y=-8/7, linestyle="--")  # for 3x2
+            if Ly == 3:
+                plt.axhline(y=-13/12, linestyle="--")  # for 3x3
+
+        plt.xlabel("Trial number")
+        plt.ylabel("Final E/n")
+        plt.title(f"Final energies, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
+        plt.tight_layout()
+        plt.grid(visible=True, which="both", linestyle="--")
+
+        fname = os.path.join(outdir, f"final_energies_h_{h}_by_trial.png")
+        plt.savefig(fname, dpi=200)
+        plt.close()
+        print(f"Saved final energies plot to: {fname}")
 
 
 
@@ -455,11 +557,11 @@ def plotting_bond_dims(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
+Lx = 2
 Ly = 2
-nlayers = 2
+nlayers = 1
 howoften_tosave = 10
-trials = 100
+trials = 10
 maxiter = 1201
 howoften_toreset = 7
 unitary = True
@@ -468,6 +570,10 @@ perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500 
 use_prob_resets = True
+
+track_grads = False
+track_params = True
+track_bond_dim = False
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -514,12 +620,8 @@ if __name__ == "__main__":
                              use_prob_resets=use_prob_resets,
                              )
     plotting(results)
-    plotting_params(results)
     plotting_thetas(results)
-    plotting_bond_dims(results)
+    plotting_final_energies(results)
 
-    training_history_csv_path = os.path.join(outdir, "training_history_by_trial_and_step.csv")
-    save_training_history_csv(results, training_history_csv_path)
-
-    theta_csv_path = os.path.join(outdir, "prob_reset_theta_by_trial_and_step.csv")
-    save_prob_reset_theta_mean_csv(results, theta_csv_path)
+    final_energies_csv_path = os.path.join(outdir, "final_energies_by_trial.csv")
+    save_final_energies_csv(results, final_energies_csv_path)
