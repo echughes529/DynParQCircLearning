@@ -1,17 +1,9 @@
 #!/bin/bash
-#$ -N dpqc_plot
 #$ -cwd
 #$ -l h_rt=48:00:00
 #$ -l h_vmem=128G
 #$ -o /dev/null
 #$ -e /dev/null
-
-
-# ----------------------------------------------------------------------------------------
-
-JOB_NAME="3x3- resets off- nlayers 2- trials 200"
-
-# ----------------------------------------------------------------------------------------
 
 
 
@@ -56,8 +48,7 @@ echo "=================================="
 
 # Tell Python where to write plots for this run
 export DPQC_OUTDIR="$RUN_DIR/plots"
+mkdir -p "$DPQC_OUTDIR"
 
 # --- Run code ---
 python -m src.examples.plot_training_curve_tc
-
-echo "End time:   $(date)"
