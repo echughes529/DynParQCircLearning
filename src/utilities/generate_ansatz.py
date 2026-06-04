@@ -322,6 +322,130 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     
     return qc
 
+# === Probabilistic Reset Theta Extraction and Logging Utilities ===
+
+def get_prob_reset_theta_rows_toriccode(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1):
+    """
+    Extract the probabilistic-reset Ry angles used in
+    `construct_dyn_circuit_toriccodelattice_prob_resets`.
+
+    Returns a list of dictionaries, one per reset angle, containing the layer,
+    reset number within that layer, target system qubit, parameter index in the
+    full parameter vector, and theta value.
+    """
+    toriccode = ToricCode(Lx, Ly)
+    nplaquettes = (Lx - 1) * (Ly - 1)
+
+    if nlayers is None:
+        nlayers = 2
+
+    if reset_qubits is None:
+        reset_qubits = [toriccode.qubit_index(x, y, reset_direction) for x in range(Lx - 1) for y in range(Ly - 1)]
+        reset_qubits = [q for q in reset_qubits if q is not None]
+
+    nresets_per_layer = len(reset_qubits)
+    total_resets = nresets_per_layer * nlayers
+    unitary_param_count = nplaquettes * 3 * 9 * nlayers
+    nq = 2 * Lx * Ly - Lx - Ly
+    expected_nparams = unitary_param_count + total_resets + 3 * nq
+
+    if len(params) != expected_nparams:
+        raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {expected_nparams}.")
+
+    rows = []
+    theta_block_start = unitary_param_count
+
+    for l in range(nlayers):
+        for r, sys_qubit in enumerate(reset_qubits):
+            idx = theta_block_start + l * nresets_per_layer + r
+            rows.append(
+                {
+                    "layer": l,
+                    "reset_number_in_layer": r,
+                    "system_qubit": sys_qubit,
+                    "param_index": idx,
+                    "theta": float(params[idx]),
+                }
+            )
+
+    return rows
+
+
+def get_prob_reset_theta_mean_toriccode(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1):
+    """
+    Return the mean of the probabilistic-reset Ry angles for one parameter vector.
+    """
+    rows = get_prob_reset_theta_rows_toriccode(
+        params,
+        Lx,
+        Ly,
+        nlayers=nlayers,
+        reset_qubits=reset_qubits,
+        reset_direction=reset_direction,
+    )
+
+    if not rows:
+        return float("nan")
+
+    return float(np.mean([row["theta"] for row in rows]))
+
+
+def append_prob_reset_theta_mean_csv_toriccode(
+    params,
+    Lx,
+    Ly,
+    nlayers=None,
+    reset_qubits=None,
+    reset_direction=1,
+    csv_path=None,
+    trial=None,
+    iteration=None,
+):
+    """
+    Append one row to a CSV containing the mean probabilistic-reset theta value
+    for the current parameter vector.
+
+    This is intended to be called during training, for example every
+    `howoften_tosave` iterations. Averaging across trials can then be done later
+    by grouping the CSV rows by iteration.
+    """
+    mean_theta = get_prob_reset_theta_mean_toriccode(
+        params,
+        Lx,
+        Ly,
+        nlayers=nlayers,
+        reset_qubits=reset_qubits,
+        reset_direction=reset_direction,
+    )
+
+    if csv_path is None:
+        outdir = os.environ.get("DPQC_OUTDIR", ".")
+        csv_path = os.path.join(outdir, "prob_reset_theta_means.csv")
+
+    csv_dir = os.path.dirname(csv_path)
+    if csv_dir:
+        os.makedirs(csv_dir, exist_ok=True)
+
+    file_exists = os.path.exists(csv_path)
+
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["trial", "iteration", "mean_theta"],
+        )
+        if not file_exists:
+            writer.writeheader()
+
+        writer.writerow(
+            {
+                "trial": trial,
+                "iteration": iteration,
+                "mean_theta": mean_theta,
+            }
+        )
+
+    return csv_path
+
 
 
 def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
