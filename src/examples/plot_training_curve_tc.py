@@ -241,6 +241,7 @@ def save_final_energies_csv(results, csv_path):
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
+                   reset_layers=None,
                    ):
 
     if nlayers_current is None:
@@ -264,6 +265,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             noise_rate=noise_rate,
             number_of_shots=number_of_shots,
             use_prob_resets=use_prob_resets,
+            reset_layers=reset_layers,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims = ansatz.optimize(
@@ -271,12 +273,18 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             track_grads=track_grads,
             track_bond_dim=track_bond_dim,
         )
+        reset_layers_used = None
+        if use_prob_resets and hasattr(ansatz, "active_reset_layers"):
+            reset_layers_used = list(ansatz.active_reset_layers)
+
         results[h] = {
             "final_E": final_E,
             "final_purity": final_purity,
             "all_E": all_E,
             "all_P": all_P,
             "all_param": all_param,
+            "reset_layers_used": reset_layers_used,
+            "reset_layers_input": reset_layers,
         }
 
     return results
@@ -399,7 +407,25 @@ def plotting_thetas(results):
     steps_for_h = steps[:n_available_snapshots]
 
     n_resets_per_layer = (Lx - 1) * (Ly - 1) # number of plaquettes
-    n_reset_thetas = n_resets_per_layer * nlayers
+
+    reset_layers_used = results[h].get("reset_layers_used")
+    reset_layers_input = results[h].get("reset_layers_input")
+
+    if reset_layers_used is None:
+        active_reset_layers = list(range(nlayers))
+    else:
+        active_reset_layers = list(reset_layers_used)
+
+    if reset_layers_input is None:
+        reset_layers_label = f"all layers {active_reset_layers}"
+    else:
+        reset_layers_label = str(active_reset_layers)
+
+    n_reset_thetas = n_resets_per_layer * len(active_reset_layers)
+
+    print(f"reset_layers input: {reset_layers_input}")
+    print(f"reset_layers used: {active_reset_layers}")
+    print(f"n_reset_thetas: {n_reset_thetas}")
 
     theta_start = n_two_q_params_ron
     theta_stop = theta_start + n_reset_thetas
@@ -435,7 +461,7 @@ def plotting_thetas(results):
 
         plt.xlabel("Training steps")
         plt.ylabel(r"Reset $|\theta|$")
-        plt.title(f"Reset |theta| {theta_idx + 1} across all trials")
+        plt.title(f"Reset |theta| {theta_idx + 1} across trials, reset_layers={reset_layers_label}")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
@@ -557,12 +583,12 @@ def plotting_bond_dims(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 2
-Ly = 2
-nlayers = 1
+Lx = 3
+Ly = 3
+nlayers = 2
 howoften_tosave = 10
-trials = 10
-maxiter = 1201
+trials = 100
+maxiter = 1501
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -571,7 +597,12 @@ noise_rate = 5e-2
 number_of_shots = 500 
 use_prob_resets = True
 
-track_grads = False
+# Choose which ansatz layers get probabilistic resets.
+# Use None to apply resets on every layer, preserving the old behaviour.
+# Layer indexing is zero-based, so [0] means only the first layer.
+reset_layers = None
+
+track_grads = True
 track_params = True
 track_bond_dim = False
 # ---------------------------------------------------------------------------------------------------------------------
@@ -604,6 +635,7 @@ if __name__ == "__main__":
     print(f"howoften_toreset={howoften_toreset}")
     print(f"trials={trials}, maxiter={maxiter}")
     print(f"outdir={outdir}")
+    print(f"reset_layers={reset_layers}")
     print("=================================")
 
     results = running_for_hs(Lx=Lx, 
@@ -618,6 +650,7 @@ if __name__ == "__main__":
                              perform_noisy_simulations=perform_noisy_simulations,
                              number_of_shots=number_of_shots,
                              use_prob_resets=use_prob_resets,
+                             reset_layers=reset_layers,
                              )
     plotting(results)
     plotting_thetas(results)
@@ -625,3 +658,7 @@ if __name__ == "__main__":
 
     final_energies_csv_path = os.path.join(outdir, "final_energies_by_trial.csv")
     save_final_energies_csv(results, final_energies_csv_path)
+    
+    training_history_csv_path = os.path.join(outdir, "training_history.csv")
+    save_training_history_csv(results, training_history_csv_path)
+    

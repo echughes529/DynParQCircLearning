@@ -43,6 +43,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     use_prob_resets: bool = True
     which_qubits_for_prob_reset: Optional[list] = None
     prob_reset_direction: int = 1 # vertical
+    reset_layers: Optional[list] = None
 
     use_small_angle_initialization: bool = False
     range_initial_parameters: float = 0
@@ -59,12 +60,23 @@ class ToricCodeAnsatz(VariationalAnsatz):
         elif self.use_prob_resets:
             if self.which_qubits_for_prob_reset is None:
                 self.nresets_per_layer = get_nresets_per_layer_toriccode(
-                    self.Lx, self.Ly, reset_direction=1
+                    self.Lx, self.Ly, reset_direction=self.prob_reset_direction
                 )
             else:
                 self.nresets_per_layer = len(self.which_qubits_for_prob_reset)
 
-            self.total_resets = self.nresets_per_layer * self.nlayers
+            if self.reset_layers is None:
+                self.active_reset_layers = list(range(self.nlayers))
+            else:
+                self.active_reset_layers = sorted(set(int(layer) for layer in self.reset_layers))
+                invalid_layers = [layer for layer in self.active_reset_layers if layer < 0 or layer >= self.nlayers]
+                if invalid_layers:
+                    raise ValueError(
+                        f"reset_layers contains invalid layer indices: {invalid_layers}. "
+                        f"Valid range is 0 to {self.nlayers - 1}."
+                    )
+
+            self.total_resets = self.nresets_per_layer * len(self.active_reset_layers)
             self.nancillas = 2 * self.total_resets
             self.nparams = (self.nplaquettes * 3 * 9 * self.nlayers + 
                           self.total_resets + 3 * self.lattice.num_qubits)
@@ -80,8 +92,11 @@ class ToricCodeAnsatz(VariationalAnsatz):
         super().__post_init__()
 
     def __hash__(self):
+        reset_layers_key = None if self.reset_layers is None else tuple(self.active_reset_layers)
         return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h, 
-                    self.trials, self.maxiter, self.howoften_tosave, self.learning_rate, self.sparse))
+                    self.trials, self.maxiter, self.howoften_tosave, self.learning_rate,
+                    self.sparse, self.use_prob_resets, self.prob_reset_direction,
+                    reset_layers_key))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -149,7 +164,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
             return construct_dyn_circuit_toriccodelattice_prob_resets(
                 params, self.Lx, self.Ly, self.nlayers,
                 self.which_qubits_for_prob_reset,
-                reset_direction=self.prob_reset_direction
+                reset_direction=self.prob_reset_direction,
+                reset_layers=self.active_reset_layers,
             )
         elif self.unitary:
             return construct_unitary_circuit_toriccodelattice(

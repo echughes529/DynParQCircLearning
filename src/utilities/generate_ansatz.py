@@ -230,7 +230,7 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
     return qc
 
 
-def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1):
+def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1, reset_layers=None):
     """
     Construct a dynamic circuit for toric code lattice with probabilistic resets on system qubits.
     
@@ -245,6 +245,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
         nlayers: Number of layers (default: 2)
         reset_qubits: List of system qubit indices to reset. If None, uses reset_direction.
         reset_direction: Direction for default reset qubits (0=horizontal, 1=vertical, 2=plaquette centers)
+        reset_layers: List of layer indices on which to apply probabilistic resets. If None, resets are applied on every layer.
     
     Returns:
         tc.Circuit: The constructed circuit
@@ -263,8 +264,19 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
         reset_qubits = [q for q in reset_qubits if q is not None]
     
     nresets_per_layer = len(reset_qubits)
-    # Apply resets every layer
-    total_resets = nresets_per_layer * nlayers
+
+    # Choose which layers have probabilistic resets.
+    # By default, preserve the old behaviour and reset on every layer.
+    if reset_layers is None:
+        reset_layers = list(range(nlayers))
+    else:
+        reset_layers = sorted(set(int(layer) for layer in reset_layers))
+        invalid_layers = [layer for layer in reset_layers if layer < 0 or layer >= nlayers]
+        if invalid_layers:
+            raise ValueError(f"reset_layers contains invalid layer indices: {invalid_layers}. Valid range is 0 to {nlayers - 1}.")
+
+    n_reset_layers = len(reset_layers)
+    total_resets = nresets_per_layer * n_reset_layers
     
     # Each reset needs 2 ancillas: one for probability control, one for purification
     nancillas = 2 * total_resets
@@ -274,7 +286,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     
     # Calculate number of parameters needed:
     # - Unitaries: nplaquettes * 3 * 9 * nlayers (no more Cartan block connecting system qubits to plaquette ancillas, so 3 instead of 4)
-    # - Probability control: 1 parameter per reset (total_resets = nresets_per_layer * nlayers)
+    # - Probability control: 1 parameter per reset (total_resets = nresets_per_layer * len(reset_layers))
     # - Final single qubit unitaries: 3 * nq
     nparams = nplaquettes * 3 * 9 * nlayers + total_resets + 3 * nq
     
@@ -292,30 +304,31 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     for l in range(nlayers):
         # Apply one set of unitaries
         qc, paramindex = onesetofunitaries(qc, claws, params, paramindex)
-        
-        # Apply probabilistic resets every layer
-        for sys_qubit in reset_qubits:
-            # Ancilla indices for this reset
-            prob_ancilla = nq + 2 * ancilla_index      # Probability control ancilla
-            purif_ancilla = nq + 2 * ancilla_index + 1  # Purification ancilla
-            
-            # Apply parametrized Ry to probability control ancilla
-            # This determines the probability of reset: |0⟩ cos(θ/2) + |1⟩ sin(θ/2)
-            qc.ry(prob_ancilla, theta=params[paramindex])
-            paramindex += 1
-            
-            # Probabilistic reset implementation:
-            # 1. Copy system qubit state to purification ancilla (controlled on prob_ancilla)
-            # 2. Reset system qubit to |0⟩ (controlled on prob_ancilla)
-            
-            # Controlled CNOT from system qubit to purification ancilla to record its state
-            qc.ccx(prob_ancilla, sys_qubit, purif_ancilla)
-            
-            # Controlled reset: if prob_ancilla is |1⟩, reset sys_qubit to |0⟩
-            # This is done by controlled-X from purif_ancilla back to sys_qubit
-            qc.ccx(prob_ancilla, purif_ancilla, sys_qubit)
-            
-            ancilla_index += 1
+
+        # Apply probabilistic resets only on the requested layers
+        if l in reset_layers:
+            for sys_qubit in reset_qubits:
+                # Ancilla indices for this reset
+                prob_ancilla = nq + 2 * ancilla_index      # Probability control ancilla
+                purif_ancilla = nq + 2 * ancilla_index + 1  # Purification ancilla
+
+                # Apply parametrized Ry to probability control ancilla
+                # This determines the probability of reset: |0⟩ cos(θ/2) + |1⟩ sin(θ/2)
+                qc.ry(prob_ancilla, theta=params[paramindex])
+                paramindex += 1
+
+                # Probabilistic reset implementation:
+                # 1. Copy system qubit state to purification ancilla (controlled on prob_ancilla)
+                # 2. Reset system qubit to |0⟩ (controlled on prob_ancilla)
+
+                # Controlled CNOT from system qubit to purification ancilla to record its state
+                qc.ccx(prob_ancilla, sys_qubit, purif_ancilla)
+
+                # Controlled reset: if prob_ancilla is |1⟩, reset sys_qubit to |0⟩
+                # This is done by controlled-X from purif_ancilla back to sys_qubit
+                qc.ccx(prob_ancilla, purif_ancilla, sys_qubit)
+
+                ancilla_index += 1
     
     # Final layer of single qubit unitaries on system qubits
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex, nq)
@@ -324,7 +337,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
 
 # === Probabilistic Reset Theta Extraction and Logging Utilities ===
 
-def get_prob_reset_theta_rows_toriccode(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1):
+def get_prob_reset_theta_rows_toriccode(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1, reset_layers=None):
     """
     Extract the probabilistic-reset Ry angles used in
     `construct_dyn_circuit_toriccodelattice_prob_resets`.
@@ -343,8 +356,16 @@ def get_prob_reset_theta_rows_toriccode(params, Lx, Ly, nlayers=None, reset_qubi
         reset_qubits = [toriccode.qubit_index(x, y, reset_direction) for x in range(Lx - 1) for y in range(Ly - 1)]
         reset_qubits = [q for q in reset_qubits if q is not None]
 
+    if reset_layers is None:
+        reset_layers = list(range(nlayers))
+    else:
+        reset_layers = sorted(set(int(layer) for layer in reset_layers))
+        invalid_layers = [layer for layer in reset_layers if layer < 0 or layer >= nlayers]
+        if invalid_layers:
+            raise ValueError(f"reset_layers contains invalid layer indices: {invalid_layers}. Valid range is 0 to {nlayers - 1}.")
+
     nresets_per_layer = len(reset_qubits)
-    total_resets = nresets_per_layer * nlayers
+    total_resets = nresets_per_layer * len(reset_layers)
     unitary_param_count = nplaquettes * 3 * 9 * nlayers
     nq = 2 * Lx * Ly - Lx - Ly
     expected_nparams = unitary_param_count + total_resets + 3 * nq
@@ -355,9 +376,9 @@ def get_prob_reset_theta_rows_toriccode(params, Lx, Ly, nlayers=None, reset_qubi
     rows = []
     theta_block_start = unitary_param_count
 
-    for l in range(nlayers):
+    for reset_layer_position, l in enumerate(reset_layers):
         for r, sys_qubit in enumerate(reset_qubits):
-            idx = theta_block_start + l * nresets_per_layer + r
+            idx = theta_block_start + reset_layer_position * nresets_per_layer + r
             rows.append(
                 {
                     "layer": l,
@@ -371,7 +392,7 @@ def get_prob_reset_theta_rows_toriccode(params, Lx, Ly, nlayers=None, reset_qubi
     return rows
 
 
-def get_prob_reset_theta_mean_toriccode(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1):
+def get_prob_reset_theta_mean_toriccode(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1, reset_layers=None):
     """
     Return the mean of the probabilistic-reset Ry angles for one parameter vector.
     """
@@ -382,6 +403,7 @@ def get_prob_reset_theta_mean_toriccode(params, Lx, Ly, nlayers=None, reset_qubi
         nlayers=nlayers,
         reset_qubits=reset_qubits,
         reset_direction=reset_direction,
+        reset_layers=reset_layers,
     )
 
     if not rows:
@@ -397,6 +419,7 @@ def append_prob_reset_theta_mean_csv_toriccode(
     nlayers=None,
     reset_qubits=None,
     reset_direction=1,
+    reset_layers=None,
     csv_path=None,
     trial=None,
     iteration=None,
@@ -416,6 +439,7 @@ def append_prob_reset_theta_mean_csv_toriccode(
         nlayers=nlayers,
         reset_qubits=reset_qubits,
         reset_direction=reset_direction,
+        reset_layers=reset_layers,
     )
 
     if csv_path is None:
