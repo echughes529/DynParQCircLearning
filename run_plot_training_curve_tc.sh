@@ -1,7 +1,8 @@
 #!/bin/bash
 #$ -cwd
-#$ -l h_rt=48:00:00
-#$ -l h_vmem=128G
+#$ -l h_rt=24:00:00
+#$ -l h_vmem=64G
+#$ -l h_rss=30G
 #$ -o /dev/null
 #$ -e /dev/null
 
