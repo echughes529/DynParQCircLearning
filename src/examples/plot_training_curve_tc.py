@@ -501,6 +501,10 @@ reset_layers = None
 track_grads = True
 track_params = True
 track_bond_dim = False
+
+plot_final_energies = False
+save_final_energies = False
+save_training_history = False
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -548,13 +552,22 @@ if __name__ == "__main__":
                              use_prob_resets=use_prob_resets,
                              reset_layers=reset_layers,
                              )
+    # ------------------------------------------------------------------------------------------
+    # Choosing which results to obtain
+    # ------------------------------------------------------------------------------------------
     plotting(results)
-    plotting_thetas(results)
-    plotting_final_energies(results)
-
-    final_energies_csv_path = os.path.join(outdir, "final_energies_by_trial.csv")
-    save_final_energies_csv(results, final_energies_csv_path)
     
-    training_history_csv_path = os.path.join(outdir, "training_history.csv")
-    save_training_history_csv(results, training_history_csv_path)
+    if track_params:
+        plotting_thetas(results)
     
+    if plot_final_energies:  
+        plotting_final_energies(results)
+        
+    if save_final_energies:
+        final_energies_csv_path = os.path.join(outdir, "final_energies_by_trial.csv")
+        save_final_energies_csv(results, final_energies_csv_path)
+    
+    if save_training_history:
+        training_history_csv_path = os.path.join(outdir, "training_history.csv")
+        save_training_history_csv(results, training_history_csv_path)
+        
