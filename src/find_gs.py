@@ -47,7 +47,6 @@ tc.set_contractor("custom", optimizer=optr, preprocessing=True)
 import optax
 
 from src.utilities.generate_ansatz import *
-from src.utilities.generate_ansatz import get_prob_reset_theta_mean_toriccode
 from src.utilities.result_saver import ResultSaver
 
 def _make_jit_helpers(ansatz: Any) -> Tuple[Callable, Callable]:

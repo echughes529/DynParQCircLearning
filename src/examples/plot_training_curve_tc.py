@@ -11,113 +11,6 @@ from src.utilities.generate_toric_code_hamiltonian import ToricCode
 from src.utilities.ansatz_classes import ToricCodeAnsatz
 
 
-def _extract_prob_reset_theta_history_from_ansatz(ansatz):
-    """
-    Try to extract a per-trial, per-snapshot history of mean probabilistic-reset
-    theta values from the ansatz object.
-
-    Expected shape:
-        (trials, n_snapshots)
-
-    This helper is deliberately defensive because different local branches may
-    store the history under different attribute names.
-    """
-    candidate_names = [
-        "all_prob_reset_theta_means",
-        "prob_reset_theta_means_all",
-        "prob_reset_theta_history",
-        "all_prob_reset_theta_history",
-        "all_theta_means",
-        "theta_means_history",
-    ]
-
-    for name in candidate_names:
-        if hasattr(ansatz, name):
-            value = getattr(ansatz, name)
-            if value is None:
-                continue
-            arr = np.asarray(value, dtype=float)
-            if arr.ndim == 2:
-                return arr
-
-    return None
-
-
-def save_prob_reset_theta_mean_csv(results, csv_path):
-    """
-    Save a CSV containing the per-trial probabilistic-reset theta value at each
-    saved training step, together with the across-trial mean and standard
-    deviation at that same step.
-
-    One row is written for each `(h, trial, training_step)` triple.
-
-    Notes
-    -----
-    This expects each `results[h]` entry to contain a key
-    `"all_prob_reset_theta_means"` with shape `(trials, n_snapshots)`.
-    If that data is not available from the ansatz branch currently in use,
-    the function writes nothing and prints a warning.
-    """
-    rows = []
-
-    for h in h_list:
-        result_for_h = results[h]
-        theta_history = result_for_h.get("all_prob_reset_theta_means")
-
-        if theta_history is None:
-            continue
-
-        theta_history = np.asarray(theta_history, dtype=float)
-        if theta_history.ndim != 2:
-            continue
-
-        mean_theta = theta_history.mean(axis=0)
-        std_theta = theta_history.std(axis=0)
-
-        n_trials, n_available_snapshots = theta_history.shape
-        steps_for_h = steps[:n_available_snapshots]
-
-        for trial_idx in range(n_trials):
-            for snapshot_idx, step in enumerate(steps_for_h):
-                rows.append(
-                    {
-                        "h": h,
-                        "trial": int(trial_idx + 1),
-                        "training_step": int(step),
-                        "theta_value": float(theta_history[trial_idx, snapshot_idx]),
-                        "mean_theta_across_trials": float(mean_theta[snapshot_idx]),
-                        "std_theta_across_trials": float(std_theta[snapshot_idx]),
-                    }
-                )
-
-    if not rows:
-        print(
-            "Warning: no probabilistic-reset theta history was found on the ansatz object, "
-            "so no theta CSV was written. The plotting script is ready, but the optimisation "
-            "code must expose a per-trial theta history first."
-        )
-        return None
-
-    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "h",
-                "trial",
-                "training_step",
-                "theta_value",
-                "mean_theta_across_trials",
-                "std_theta_across_trials",
-            ],
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-
-    print(f"Saved probabilistic-reset theta CSV to: {csv_path}")
-    return csv_path
-
-
 # ------------------------------------------------------------------------------------------------------------
 # Save raw per-trial training histories to CSV
 # ------------------------------------------------------------------------------------------------------------
@@ -393,6 +286,9 @@ def plotting_thetas(results):
         [two-qubit gate params][probabilistic-reset theta params][final single-qubit params]
 
     This saves one plot per reset-theta parameter. Each plot contains all trials.
+    
+    Currently theta tracking is done by saving all params and then just extracting the theta params.
+    This should be done more efficiently when scaling up (just saving theta, not all params).
     """
     h = h_list[0]
     all_param = np.asarray(results[h]["all_param"], dtype=float)
@@ -583,11 +479,11 @@ def plotting_bond_dims(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
-Ly = 3
-nlayers = 2
+Lx = 2
+Ly = 2
+nlayers = 1
 howoften_tosave = 10
-trials = 100
+trials = 20
 maxiter = 1501
 howoften_toreset = 7
 unitary = True
