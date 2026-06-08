@@ -332,7 +332,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     
     # Final layer of single qubit unitaries on system qubits
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex, nq)
-    
+    print(f"single unitaries applied, param index: {paramindex}")
     return qc
 
 
@@ -426,10 +426,7 @@ def test_ansatz(param, n, nlayers, n_resets):
 
     return paramc, c
 
-split_conf = {
-    "max_singular_values": 2,  # how many singular values are kept
-    "fixed_choice": 1, # 1 for normal one, 2 for swapped one
-}
+split_conf = {}
 
 def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
     n_resets = nlayers*(n-1)
