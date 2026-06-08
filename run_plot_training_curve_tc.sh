@@ -2,7 +2,6 @@
 #$ -cwd
 #$ -l h_rt=24:00:00
 #$ -l h_vmem=64G
-#$ -l h_rss=30G
 #$ -o /dev/null
 #$ -e /dev/null
 
@@ -16,7 +15,7 @@ RUN_TAG=$(date +%Y-%m-%d_%H-%M-%S)
 RUN_DIR=logs/${RUN_TAG}_${JOB_NAME}_${JOB_ID}
 mkdir -p "$RUN_DIR"
 
-# Redirect stdout/stderr into the per-run directory
+# Redirect stdout/stderr into the per-run directory $ -l h_rss=16G
 exec > "$RUN_DIR/stdout.out"
 exec 2> "$RUN_DIR/stderr.err"
 
