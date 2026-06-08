@@ -176,6 +176,8 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             "all_E": all_E,
             "all_P": all_P,
             "all_param": all_param,
+            "all_grads": all_grads,
+            "all_bond_dims": all_bond_dims,
             "reset_layers_used": reset_layers_used,
             "reset_layers_input": reset_layers,
         }
@@ -191,15 +193,18 @@ def plotting(results):
             mean_E = all_E.mean(axis=0)
             std_E  = all_E.std(axis=0)
 
+            n_available_snapshots = all_E.shape[1]
+            steps_for_h = steps[:n_available_snapshots]
+
             E_dens_ref = E_dens_ref_dict[h]
             mean_E_dens_diff = (mean_E / n_qubits) - E_dens_ref
             std_E_dens_diff  = std_E / n_qubits
 
             label = rf"$h = {h}$"
 
-            plt.plot(steps, mean_E_dens_diff, color=c, label=label)
+            plt.plot(steps_for_h, mean_E_dens_diff, color=c, label=label)
             plt.fill_between(
-                steps,
+                steps_for_h,
                 mean_E_dens_diff - std_E_dens_diff,
                 mean_E_dens_diff + std_E_dens_diff,
                 color=c,
@@ -357,7 +362,7 @@ def plotting_thetas(results):
 
         plt.xlabel("Training steps")
         plt.ylabel(r"Reset $|\theta|$")
-        plt.title(f"Reset |theta| {theta_idx + 1} across trials, reset_layers={reset_layers_label}")
+        plt.title(f"Reset |theta| {theta_idx + 1}, reset_layers={reset_layers_label}")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
@@ -387,17 +392,46 @@ def plotting_final_energies(results):
         plt.figure(figsize=(5, 4))
         plt.plot(trial_numbers, final_E_density, marker="o", linestyle="None")
 
+        reference_energy_density = None
+
         if Lx == 2 and Ly == 2:
-            plt.axhline(y=-5/4, linestyle="--")  # for 2x2
+            reference_energy_density = -5/4  # for 2x2
         if Lx == 3:
             if Ly == 2:
-                plt.axhline(y=-8/7, linestyle="--")  # for 3x2
+                reference_energy_density = -8/7  # for 3x2
             if Ly == 3:
-                plt.axhline(y=-13/12, linestyle="--")  # for 3x3
+                reference_energy_density = -13/12  # for 3x3
+
+        if reference_energy_density is not None:
+            plt.axhline(y=reference_energy_density, linestyle="--")
+
+            relative_error = np.abs(
+                (final_E_density - reference_energy_density)
+                / reference_energy_density
+            )
+            n_within = int(np.sum(relative_error <= 0.001))  # 0.1%
+            percentage_within = 100 * n_within / len(final_E_density)
+
+            print(
+                f"h={h}: {n_within}/{len(final_E_density)} trials "
+                f"({percentage_within:.1f}%) within 0.1% of reference energy density "
+                f"({reference_energy_density})"
+            )
+        else:
+            print(
+                f"No reference energy density defined for Lx={Lx}, Ly={Ly}; "
+                "skipping 0.1% trial count."
+            )
 
         plt.xlabel("Trial number")
         plt.ylabel("Final E/n")
-        plt.title(f"Final energies, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
+        if reference_energy_density is not None:
+            plt.title(
+                f"Final energies, h={h}, {Lx}x{Ly}, nlayers:{nlayers}\n"
+                f"{n_within}/{len(final_E_density)} within 0.1%"
+            )
+        else:
+            plt.title(f"Final energies, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
         plt.tight_layout()
         plt.grid(visible=True, which="both", linestyle="--")
 
@@ -474,17 +508,89 @@ def plotting_bond_dims(results):
         print(f"Saved bond-dimension plot to: {fname}")
 
 
+# ------------------------------------------------------------------------------------------------------------
+# Plot gradient norms over training
+# ------------------------------------------------------------------------------------------------------------
+def plotting_gradient_norms(results):
+    """
+    Plot the L2 norm of the gradient vector over training.
+
+    This uses the stored full gradient history `all_grads`, which should have
+    shape (trials, snapshots, nparams). One plot is saved per h value.
+    """
+    os.makedirs(outdir, exist_ok=True)
+
+    for h in h_list:
+        all_grads = results[h].get("all_grads")
+
+        if all_grads is None:
+            print(f"No gradient history found for h={h}; skipping gradient-norm plot.")
+            continue
+
+        all_grads = np.asarray(all_grads, dtype=float)
+
+        if all_grads.ndim != 3:
+            raise ValueError(
+                f"Expected all_grads to have shape (trials, snapshots, nparams), "
+                f"but got shape {all_grads.shape} for h={h}"
+            )
+
+        gradient_norms = np.linalg.norm(all_grads, axis=2)
+        # shape: (trials, snapshots)
+
+        n_trials, n_available_snapshots = gradient_norms.shape
+        steps_for_h = steps[:n_available_snapshots]
+
+        print(f"all_grads shape for h={h}: {all_grads.shape}")
+        print(f"gradient_norms shape for h={h}: {gradient_norms.shape}")
+        print(f"gradient_norms min/max for h={h}: {np.nanmin(gradient_norms)}, {np.nanmax(gradient_norms)}")
+
+        plt.figure(figsize=(5, 4))
+
+        for trial_idx in range(n_trials):
+            plt.plot(
+                steps_for_h,
+                gradient_norms[trial_idx],
+                alpha=0.35,
+                linewidth=1,
+                label=f"trial {trial_idx + 1}" if n_trials <= 10 else None,
+            )
+
+        mean_grad_norm = np.nanmean(gradient_norms, axis=0)
+        plt.plot(
+            steps_for_h,
+            mean_grad_norm,
+            color="black",
+            linewidth=2,
+            label="mean across trials",
+        )
+
+        plt.yscale("log")
+        plt.xlabel("Training steps")
+        plt.ylabel("Gradient norm")
+        plt.title(f"Gradient norm, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
+        if n_trials <= 10:
+            plt.legend()
+        else:
+            plt.legend(["mean across trials"])
+        plt.tight_layout()
+        plt.grid(visible=True, which='both', linestyle='--')
+
+        fname = os.path.join(outdir, f"gradient_norm_h_{h}_all_trials.png")
+        plt.savefig(fname, dpi=200)
+        plt.close()
+        print(f"Saved gradient-norm plot to: {fname}")
 
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 2
+Lx = 3
 Ly = 2
-nlayers = 1
-howoften_tosave = 10
-trials = 20
-maxiter = 1501
+nlayers = 2
+howoften_tosave = 1
+trials = 200
+maxiter = 2000
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -496,14 +602,14 @@ use_prob_resets = True
 # Choose which ansatz layers get probabilistic resets.
 # Use None to apply resets on every layer, preserving the old behaviour.
 # Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = None
+reset_layers = [1]
 
 track_grads = True
 track_params = True
 track_bond_dim = False
 
-plot_final_energies = False
-save_final_energies = False
+plot_final_energies = True
+save_final_energies = True
 save_training_history = False
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -557,6 +663,8 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------------------------------
     plotting(results)
     
+    if track_grads:
+        plotting_gradient_norms(results)
     if track_params:
         plotting_thetas(results)
     
@@ -571,3 +679,5 @@ if __name__ == "__main__":
         training_history_csv_path = os.path.join(outdir, "training_history.csv")
         save_training_history_csv(results, training_history_csv_path)
         
+if track_bond_dim:
+    plotting_bond_dims(results)
