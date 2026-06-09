@@ -20,7 +20,20 @@ jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
 
+
 K = tc.set_backend("jax")
+
+# Helper to create an MPS circuit and set optional split rules
+def make_mps_circuit(nqubits, split=None):
+    """Create an MPS circuit and apply optional split/truncation rules.
+
+    Passing split={} is intentional: for MPSCircuit this means no truncation rules,
+    so the bond dimension is allowed to grow naturally.
+    """
+    qc = tc.MPSCircuit(nqubits)
+    if split is not None:
+        qc.set_split_rules(split)
+    return qc
 
 from qiskit.circuit import QuantumCircuit, ParameterVector, QuantumRegister, ClassicalRegister
 from src.utilities.generate_toric_code_hamiltonian import *
@@ -30,6 +43,9 @@ def precompute(c):
     return tc.DMCircuit(c._nqubits, dminputs=s)
 
 def cartanblock(params=None, paramindex = 0):
+    """
+    Not MPS friendly but kept for qiskit ciruit construction in construct_fldc_toriccodelattice
+    """
     qubit0, qubit1 = 0, 1
     blk = tc.Circuit(2)
     blk, paramindex = universalsingle(blk, qubit0, params, paramindex)
@@ -40,6 +56,21 @@ def cartanblock(params=None, paramindex = 0):
     paramindex = paramindex+3
     return blk, paramindex
 
+# Apply Cartan block directly to an existing circuit (avoiding temporary tc.Circuit)
+def apply_cartanblock(qc, qubit0, qubit1, params, paramindex):
+    """
+    Apply the Cartan block directly to an existing circuit.
+
+    This avoids appending a temporary tc.Circuit block into an MPSCircuit.
+    """
+    qc, paramindex = universalsingle(qc, qubit0, params, paramindex)
+    qc, paramindex = universalsingle(qc, qubit1, params, paramindex)
+    qc.rxx(qubit0, qubit1, theta=params[paramindex])
+    qc.ryy(qubit0, qubit1, theta=params[paramindex + 1])
+    qc.rzz(qubit0, qubit1, theta=params[paramindex + 2])
+    paramindex += 3
+    return qc, paramindex
+
 def universalsingle(circuit, index, params, paramindex):
     circuit.ry(index, theta=params[paramindex])
     circuit.rz(index, theta=params[paramindex+1])
@@ -48,8 +79,7 @@ def universalsingle(circuit, index, params, paramindex):
 
 def onesetofunitaries(qc, claws, params, paramindex, measindx=None,measure=False,seed=None):
     for cl in claws:
-        inst, paramindex = cartanblock(params, paramindex)
-        qc.append(inst, indices=cl)
+        qc, paramindex = apply_cartanblock(qc, cl[0], cl[1], params, paramindex)
         if measure:
             if measindx is None:
                 raise ValueError("Please supply an argument for `measindx`")
@@ -103,14 +133,14 @@ def construct_dyn_circuit_brickwork(params,sc):
     paramindex = 0
     measindex = 0
     if backend=="tc":
-        qc = tc.Circuit(nq+n_ancillas,split=split_conf)
+        qc = make_mps_circuit(nq + n_ancillas, split=split_conf)
         for l in range(nlayers):
             qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
             if howoften and (l % howoften == howoften - 1) and ancillas:
                 for a in ancillas:
                     # r = qc.cond_measurement(a)
                     # qc.conditional_gate(r, [tc.gates.i(), tc.gates.x()], a)
-                    # Is equivalent to qc.reset(a), which MPSCircuit does not have
+                    # Is equivalent to qc.reset(a)
                     qc.reset(a)
                     measindex += 1
 
@@ -138,7 +168,7 @@ def construct_unitary_circuit_brickwork(params,sc):
     paramindex = 0
     measindex = 0
     if backend=="tc":
-        qc = tc.Circuit(nq+n_ancillas,split=split_conf)
+        qc = make_mps_circuit(nq + n_ancillas, split=split_conf)
 
         for l in range(nlayers):
             qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
@@ -164,7 +194,7 @@ def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=
     if nlayers is None:
         # nlayers = max(Lx,Ly)
         nlayers = 2
-    qc = tc.Circuit(nq+nplaquettes + nplaquettes * (nlayers//howoften), split=split_conf)
+    qc = make_mps_circuit(nq + nplaquettes + nplaquettes * (nlayers // howoften), split=split_conf)
     
     nmeasurements = nplaquettes * (nlayers//howoften)
     nparams = nplaquettes * 4 * 9 *nlayers + 0*nmeasurements + 3*nq
@@ -211,7 +241,7 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
     if nlayers is None:
         # nlayers = max(Lx,Ly)
         nlayers = 2
-    qc = tc.Circuit(nq)
+    qc = make_mps_circuit(nq, split=split_conf)
     
     nparams = nplaquettes * 4 * 9 *nlayers + 3*nq
     if params.shape[0] != nparams:
@@ -282,7 +312,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     nancillas = 2 * total_resets
     
     # Create circuit with system qubits + ancillas
-    qc = tc.Circuit(nq + nancillas, split=split_conf)
+    qc = make_mps_circuit(nq + nancillas, split=split_conf)
     
     # Calculate number of parameters needed:
     # - Unitaries: nplaquettes * 3 * 9 * nlayers (no more Cartan block connecting system qubits to plaquette ancillas, so 3 instead of 4)
@@ -369,7 +399,7 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
         raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
     
     # Create circuit with only system qubits (no ancillas needed)
-    qc = tc.Circuit(nq, split=split_conf)
+    qc = make_mps_circuit(nq, split=split_conf)
     
     paramindex = 0
     
@@ -396,7 +426,7 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
 def test_ansatz(param, n, nlayers, n_resets):
     n = 2*n
     zz = np.kron(tc.gates._z_matrix, tc.gates._z_matrix)
-    c = tc.Circuit(n + n_resets)
+    c = make_mps_circuit(n + n_resets, split=split_conf)
     paramc = tc.backend.cast(param, tc.dtypestr)  # We assume the input param with dtype float64
     counter = 0
     for i in range(int(n/2)):
@@ -440,7 +470,7 @@ def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
         paramc = tc.backend.cast(param, tc.dtypestr)
 
     
-    c = tc.Circuit(n + 2*n_resets, split=split_conf)
+    c = make_mps_circuit(n + 2 * n_resets, split=split_conf)
     param_counter = 0
     counter_aux = 0
     for l in range(nlayers):
@@ -747,7 +777,7 @@ def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_p
             raise ValueError('The length of the parameter array should be ', num_params)
         else:
             paramc = tc.backend.cast(param, tc.dtypestr)
-    c = tc.Circuit(n + n_resets)
+    c = make_mps_circuit(n + n_resets, split=split_conf)
     param_counter = 0
     counter_aux = 0
     for l in range(nlayers):
@@ -856,7 +886,7 @@ def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=Non
             raise ValueError('The length of the parameter array should be ', num_params, "You have ", len(param))
         else:
             paramc = tc.backend.cast(param, tc.dtypestr)
-    c = tc.Circuit(n + n_resets)
+    c = make_mps_circuit(n + n_resets, split=split_conf)
     param_counter = 0
     counter_aux = 0
     for l in range(nlayers):
