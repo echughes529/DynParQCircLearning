@@ -101,7 +101,8 @@ class VariationalAnsatz(abc.ABC):
     howoften_tosave: int = 10       # checkpoint frequency
     learning_rate: float = 1e-2     # Adam learning rate
     sparse: bool = True             # work with the sparse Hamiltonian representation
-    
+    use_mps: bool = False           # use MPSCircuit with term-by-term expectation values
+
     # Noise simulation parameters
     perform_noisy_simulations: bool = False
     noise_rate: float = 1e-2
@@ -131,7 +132,7 @@ class VariationalAnsatz(abc.ABC):
 
     def __post_init__(self):
         """Initialize parameters and JIT helpers after dataclass initialization."""
-        if self.sparse:
+        if self.sparse and not self.use_mps:
             print("Building full Hamiltonian")
             sys.stdout.flush()
             self.fullham = self.get_full_hamiltonian()
@@ -150,11 +151,15 @@ class VariationalAnsatz(abc.ABC):
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
         qc = self._circuit(params, seed)
-        bond_dim = getattr(qc, "split", {}).get("max_singular_values") # if the qc has the attr split, it will return bond dim
-        self.last_bond_dim = bond_dim
-        
-        if self.sparse:
-            # Warn if noise is requested with sparse mode
+
+        if self.use_mps:
+            terms = self._hamiltonian_terms()
+            energy = 0.0
+            for ops, coeff in terms:
+                exp_val = qc.expectation(*ops)
+                energy += coeff * exp_val
+            return K.real(energy)
+        elif self.sparse:
             if self.perform_noisy_simulations:
                 warnings.warn(
                     "Noisy simulations are not supported with sparse=True. "
@@ -208,8 +213,11 @@ class VariationalAnsatz(abc.ABC):
         t = self.lattice
         n = t.num_qubits
         qc = self._circuit(params)
-        
-        s = qc.state()
+
+        if self.use_mps:
+            s = qc.wavefunction()
+        else:
+            s = qc.state()
         
         if qc._nqubits - n > n:
             cut = range(n)

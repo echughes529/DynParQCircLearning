@@ -26,7 +26,11 @@ from qiskit.circuit import QuantumCircuit, ParameterVector, QuantumRegister, Cla
 from src.utilities.generate_toric_code_hamiltonian import *
 
 def precompute(c):
-    s = c.state()
+    """Not MPS-compatible (converts to DMCircuit for Kraus channel application)."""
+    if hasattr(c, 'wavefunction'):
+        s = c.wavefunction()
+    else:
+        s = c.state()
     return tc.DMCircuit(c._nqubits, dminputs=s)
 
 def cartanblock(params=None, paramindex = 0):
@@ -47,6 +51,7 @@ def universalsingle(circuit, index, params, paramindex):
     return circuit, paramindex + 3
 
 def onesetofunitaries(qc, claws, params, paramindex, measindx=None,measure=False,seed=None):
+    # Note: measure=True path is not MPS-compatible (uses precompute/DMCircuit/Kraus channels).
     for cl in claws:
         inst, paramindex = cartanblock(params, paramindex)
         qc.append(inst, indices=cl)
@@ -103,15 +108,12 @@ def construct_dyn_circuit_brickwork(params,sc):
     paramindex = 0
     measindex = 0
     if backend=="tc":
-        qc = tc.Circuit(nq+n_ancillas,split=split_conf)
+        qc = tc.MPSCircuit(nq+n_ancillas,split=split_conf)
         for l in range(nlayers):
             qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
             if howoften and (l % howoften == howoften - 1) and ancillas:
                 for a in ancillas:
-                    # r = qc.cond_measurement(a)
-                    # qc.conditional_gate(r, [tc.gates.i(), tc.gates.x()], a)
-                    # Is equivalent to qc.reset(a), which MPSCircuit does not have
-                    qc.reset(a)
+                    qc.mid_measurement(a, keep=0)
                     measindex += 1
 
         qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
@@ -138,21 +140,12 @@ def construct_unitary_circuit_brickwork(params,sc):
     paramindex = 0
     measindex = 0
     if backend=="tc":
-        qc = tc.Circuit(nq+n_ancillas,split=split_conf)
+        qc = tc.MPSCircuit(nq+n_ancillas,split=split_conf)
 
         for l in range(nlayers):
             qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
 
         qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
-
-    # elif backend=="qiskit":
-    #     parameters = ParameterVector('θ', nparams)
-    #     qr = QuantumRegister(nq+n_ancillas)
-    #     qc = QuantumCircuit(qr)
-    #     for l in range(nlayers):
-    #         qc, paramindex = onesetofunitaries(qc,claws,parameters,paramindex,backend="qiskit")
-
-    #     qc, paramindex = onelayerofsingleunitaries(qc, parameters, paramindex,nq,backend="qiskit")
 
     return qc
 
@@ -164,7 +157,7 @@ def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=
     if nlayers is None:
         # nlayers = max(Lx,Ly)
         nlayers = 2
-    qc = tc.Circuit(nq+nplaquettes + nplaquettes * (nlayers//howoften), split=split_conf)
+    qc = tc.MPSCircuit(nq+nplaquettes + nplaquettes * (nlayers//howoften), split=split_conf)
     
     nmeasurements = nplaquettes * (nlayers//howoften)
     nparams = nplaquettes * 4 * 9 *nlayers + 0*nmeasurements + 3*nq
@@ -211,8 +204,8 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
     if nlayers is None:
         # nlayers = max(Lx,Ly)
         nlayers = 2
-    qc = tc.Circuit(nq)
-    
+    qc = tc.MPSCircuit(nq, split=split_conf)
+
     nparams = nplaquettes * 4 * 9 *nlayers + 3*nq
     if params.shape[0] != nparams:
         raise ValueError(f"Parameter vector has wrong size: got {params.shape[0]}, expected {nparams}.")
@@ -248,7 +241,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
         reset_layers: List of layer indices on which to apply probabilistic resets. If None, resets are applied on every layer.
     
     Returns:
-        tc.Circuit: The constructed circuit
+        tc.MPSCircuit: The constructed circuit
     """
     toriccode = ToricCode(Lx, Ly)
     nplaquettes = (Lx - 1) * (Ly - 1)
@@ -282,7 +275,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     nancillas = 2 * total_resets
     
     # Create circuit with system qubits + ancillas
-    qc = tc.Circuit(nq + nancillas, split=split_conf)
+    qc = tc.MPSCircuit(nq + nancillas, split=split_conf)
     
     # Calculate number of parameters needed:
     # - Unitaries: nplaquettes * 3 * 9 * nlayers (no more Cartan block connecting system qubits to plaquette ancillas, so 3 instead of 4)
@@ -350,7 +343,7 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
         nlayers: Number of layers (default: 2)
     
     Returns:
-        tc.Circuit: The constructed circuit
+        tc.MPSCircuit: The constructed circuit
     """
     toriccode = ToricCode(Lx, Ly)
     nplaquettes = (Lx - 1) * (Ly - 1)
@@ -369,7 +362,7 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
         raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
     
     # Create circuit with only system qubits (no ancillas needed)
-    qc = tc.Circuit(nq, split=split_conf)
+    qc = tc.MPSCircuit(nq, split=split_conf)
     
     paramindex = 0
     
@@ -396,7 +389,7 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
 def test_ansatz(param, n, nlayers, n_resets):
     n = 2*n
     zz = np.kron(tc.gates._z_matrix, tc.gates._z_matrix)
-    c = tc.Circuit(n + n_resets)
+    c = tc.MPSCircuit(n + n_resets, split=split_conf)
     paramc = tc.backend.cast(param, tc.dtypestr)  # We assume the input param with dtype float64
     counter = 0
     for i in range(int(n/2)):
@@ -426,7 +419,10 @@ def test_ansatz(param, n, nlayers, n_resets):
 
     return paramc, c
 
-split_conf = {}
+def make_split_conf(bond_dim=2):
+    return {"max_singular_values": bond_dim, "fixed_choice": 1}
+
+split_conf = make_split_conf(bond_dim=2)
 
 def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
     n_resets = nlayers*(n-1)
@@ -440,7 +436,7 @@ def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
         paramc = tc.backend.cast(param, tc.dtypestr)
 
     
-    c = tc.Circuit(n + 2*n_resets, split=split_conf)
+    c = tc.MPSCircuit(n + 2*n_resets, split=split_conf)
     param_counter = 0
     counter_aux = 0
     for l in range(nlayers):
@@ -546,7 +542,7 @@ def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
     return c
 
 
-# Density matrix implementation
+# Density matrix implementation — not MPS-compatible (uses DMCircuit / Kraus channels).
 def construct_dissipative_ansatz_dm(n, nlayers, param=None, dm_varqte=False, return_param_counter=False):
     def kraus_depolarizing(p):
         p = jnp.abs(jnp.cos(p))  # Ensure p\in[0,1[
@@ -708,6 +704,7 @@ def construct_dissipative_ansatz_dm(n, nlayers, param=None, dm_varqte=False, ret
         return dmc
 
 def construct_dissipative_ansatz_genresetsDM(n, nlayers, param=None,seed=None):
+    """Not MPS-compatible (uses DMCircuit / Kraus channels)."""
     n_resets = nlayers*(n-1)
     if np.mod(n, 2) != 0:
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
@@ -747,7 +744,7 @@ def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_p
             raise ValueError('The length of the parameter array should be ', num_params)
         else:
             paramc = tc.backend.cast(param, tc.dtypestr)
-    c = tc.Circuit(n + n_resets)
+    c = tc.MPSCircuit(n + n_resets, split=split_conf)
     param_counter = 0
     counter_aux = 0
     for l in range(nlayers):
@@ -856,7 +853,7 @@ def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=Non
             raise ValueError('The length of the parameter array should be ', num_params, "You have ", len(param))
         else:
             paramc = tc.backend.cast(param, tc.dtypestr)
-    c = tc.Circuit(n + n_resets)
+    c = tc.MPSCircuit(n + n_resets, split=split_conf)
     param_counter = 0
     counter_aux = 0
     for l in range(nlayers):

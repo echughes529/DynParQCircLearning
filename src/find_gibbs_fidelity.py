@@ -4,7 +4,10 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-"""Variational Gibbs state preparation based on training the infidelity."""
+"""Variational Gibbs state preparation based on training the infidelity.
+
+Note: not MPS-compatible — uses DMCircuit and density matrices throughout.
+"""
 
 import numpy as np
 import csv
