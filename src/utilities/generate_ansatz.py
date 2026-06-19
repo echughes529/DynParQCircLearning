@@ -446,10 +446,10 @@ def test_ansatz(param, n, nlayers, n_resets):
 
     return paramc, c
 
-def make_split_conf(bond_dim=2):
-    return {}#{"max_singular_values": bond_dim}
+def make_split_conf(bond_dim=32):
+    return {"max_singular_values": bond_dim}
 
-split_conf = make_split_conf(bond_dim=2)
+split_conf = make_split_conf(bond_dim=32)
 
 def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
     n_resets = nlayers*(n-1)

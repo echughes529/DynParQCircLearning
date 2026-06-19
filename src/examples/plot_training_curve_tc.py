@@ -588,7 +588,7 @@ def plotting_gradient_norms(results):
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
 Lx = 3
-Ly = 3
+Ly = 2
 nlayers = 2
 howoften_tosave = 10
 trials = 20
@@ -601,7 +601,7 @@ noise_rate = 5e-2
 number_of_shots = 500 
 use_prob_resets = True
 use_mps = True
-bond_dim = 2
+bond_dim = 32
 
 # Choose which ansatz layers get probabilistic resets.
 # Use None to apply resets on every layer, preserving the old behaviour.
