@@ -610,7 +610,7 @@ reset_layers = [1]
 
 track_grads = True
 track_params = True
-track_bond_dim = False
+track_bond_dim = True
 
 plot_final_energies = True
 save_final_energies = True

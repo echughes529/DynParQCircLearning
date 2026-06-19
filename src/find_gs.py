@@ -289,16 +289,12 @@ class VariationalAnsatz(abc.ABC):
                     if track_grads:
                         self.allgrads[:, counter, :] = gradient
                         
-                    if track_bond_dim and self.sparse:
+                    if track_bond_dim and self.use_mps:
                         bond_dims = []
                         for trial in range(self.trials):
-                            _ = self.energy_from_params(params[trial]) # reconstruct parameterised ansatz, will update 
-                            bond_dim = self.last_bond_dim
-                            if bond_dim is None:
-                                bond_dims.append(np.nan)
-                            else:
-                                bond_dims.append(np.max(np.asarray(bond_dim)))
-
+                            qc = self._circuit(params[trial])
+                            bd = qc.get_bond_dimensions()
+                            bond_dims.append(np.max(np.asarray(bd)))
                         self.all_bond_dims[:, counter] = np.asarray(bond_dims)
 
                     counter += 1
