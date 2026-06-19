@@ -101,7 +101,7 @@ class VariationalAnsatz(abc.ABC):
     howoften_tosave: int = 10       # checkpoint frequency
     learning_rate: float = 1e-2     # Adam learning rate
     sparse: bool = True             # work with the sparse Hamiltonian representation
-    use_mps: bool = False           # use MPSCircuit with term-by-term expectation values
+    use_mps: bool = True         # use MPSCircuit with term-by-term expectation values
 
     # Noise simulation parameters
     perform_noisy_simulations: bool = False

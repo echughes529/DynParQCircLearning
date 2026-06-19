@@ -134,7 +134,7 @@ def save_final_energies_csv(results, csv_path):
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
-                   reset_layers=None,
+                   reset_layers=None, use_mps=True, bond_dim=2,
                    ):
 
     if nlayers_current is None:
@@ -159,6 +159,8 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             number_of_shots=number_of_shots,
             use_prob_resets=use_prob_resets,
             reset_layers=reset_layers,
+            use_mps=use_mps,
+            bond_dim=bond_dim,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims = ansatz.optimize(
@@ -586,10 +588,10 @@ def plotting_gradient_norms(results):
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
 Lx = 3
-Ly = 2
+Ly = 3
 nlayers = 2
-howoften_tosave = 1
-trials = 200
+howoften_tosave = 10
+trials = 20
 maxiter = 2000
 howoften_toreset = 7
 unitary = True
@@ -598,6 +600,8 @@ perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500 
 use_prob_resets = True
+use_mps = True
+bond_dim = 2
 
 # Choose which ansatz layers get probabilistic resets.
 # Use None to apply resets on every layer, preserving the old behaviour.
@@ -641,6 +645,7 @@ if __name__ == "__main__":
     print(f"howoften_toreset={howoften_toreset}")
     print(f"trials={trials}, maxiter={maxiter}")
     print(f"outdir={outdir}")
+    print(f"use_mps={use_mps}, bond_dim={bond_dim}")
     print(f"reset_layers={reset_layers}")
     print("=================================")
 
@@ -657,6 +662,8 @@ if __name__ == "__main__":
                              number_of_shots=number_of_shots,
                              use_prob_resets=use_prob_resets,
                              reset_layers=reset_layers,
+                             use_mps=use_mps,
+                             bond_dim=bond_dim,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain

@@ -21,6 +21,7 @@ jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
 
 K = tc.set_backend("jax")
+tc.set_dtype("complex128")
 
 from qiskit.circuit import QuantumCircuit, ParameterVector, QuantumRegister, ClassicalRegister
 from src.utilities.generate_toric_code_hamiltonian import *
@@ -44,6 +45,15 @@ def cartanblock(params=None, paramindex = 0):
     paramindex = paramindex+3
     return blk, paramindex
 
+def apply_cartanblock(qc, qubit0, qubit1, params, paramindex):
+    qc, paramindex = universalsingle(qc, qubit0, params, paramindex)
+    qc, paramindex = universalsingle(qc, qubit1, params, paramindex)
+    qc.rxx(qubit0, qubit1, theta=params[paramindex])
+    qc.ryy(qubit0, qubit1, theta=params[paramindex+1])
+    qc.rzz(qubit0, qubit1, theta=params[paramindex+2])
+    paramindex = paramindex + 3
+    return qc, paramindex
+
 def universalsingle(circuit, index, params, paramindex):
     circuit.ry(index, theta=params[paramindex])
     circuit.rz(index, theta=params[paramindex+1])
@@ -53,8 +63,7 @@ def universalsingle(circuit, index, params, paramindex):
 def onesetofunitaries(qc, claws, params, paramindex, measindx=None,measure=False,seed=None):
     # Note: measure=True path is not MPS-compatible (uses precompute/DMCircuit/Kraus channels).
     for cl in claws:
-        inst, paramindex = cartanblock(params, paramindex)
-        qc.append(inst, indices=cl)
+        qc, paramindex = apply_cartanblock(qc, cl[0], cl[1], params, paramindex)
         if measure:
             if measindx is None:
                 raise ValueError("Please supply an argument for `measindx`")
@@ -223,6 +232,24 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
     return qc
 
 
+def _decomposed_ccx(qc, c0, c1, target):
+    """Toffoli (CCX) decomposed into 1- and 2-qubit gates for MPSCircuit compatibility."""
+    qc.h(target)
+    qc.cnot(c1, target)
+    qc.td(target)
+    qc.cnot(c0, target)
+    qc.t(target)
+    qc.cnot(c1, target)
+    qc.td(target)
+    qc.cnot(c0, target)
+    qc.t(c1)
+    qc.t(target)
+    qc.h(target)
+    qc.cnot(c0, c1)
+    qc.t(c0)
+    qc.td(c1)
+    qc.cnot(c0, c1)
+
 def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1, reset_layers=None):
     """
     Construct a dynamic circuit for toric code lattice with probabilistic resets on system qubits.
@@ -315,11 +342,11 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
                 # 2. Reset system qubit to |0⟩ (controlled on prob_ancilla)
 
                 # Controlled CNOT from system qubit to purification ancilla to record its state
-                qc.ccx(prob_ancilla, sys_qubit, purif_ancilla)
+                _decomposed_ccx(qc, prob_ancilla, sys_qubit, purif_ancilla)
 
                 # Controlled reset: if prob_ancilla is |1⟩, reset sys_qubit to |0⟩
                 # This is done by controlled-X from purif_ancilla back to sys_qubit
-                qc.ccx(prob_ancilla, purif_ancilla, sys_qubit)
+                _decomposed_ccx(qc, prob_ancilla, purif_ancilla, sys_qubit)
 
                 ancilla_index += 1
     
@@ -420,7 +447,7 @@ def test_ansatz(param, n, nlayers, n_resets):
     return paramc, c
 
 def make_split_conf(bond_dim=2):
-    return {"max_singular_values": bond_dim, "fixed_choice": 1}
+    return {}#{"max_singular_values": bond_dim}
 
 split_conf = make_split_conf(bond_dim=2)
 
