@@ -290,12 +290,10 @@ class VariationalAnsatz(abc.ABC):
                         self.allgrads[:, counter, :] = gradient
                         
                     if track_bond_dim and self.use_mps:
-                        bond_dims = []
                         for trial in range(self.trials):
                             qc = self._circuit(params[trial])
-                            bd = qc.get_bond_dimensions()
-                            bond_dims.append(np.max(np.asarray(bd)))
-                        self.all_bond_dims[:, counter] = np.asarray(bond_dims)
+                            bd = np.asarray(qc.get_bond_dimensions())
+                            self.all_bond_dims[trial, counter] = np.max(bd)
 
                     counter += 1
                     pbar.set_postfix_str(f"Current value: {str(jnp.min(value))}")

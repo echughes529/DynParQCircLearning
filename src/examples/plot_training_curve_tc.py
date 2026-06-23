@@ -446,10 +446,10 @@ def plotting_final_energies(results):
 
 def plotting_bond_dims(results):
     """
-    Plot the tracked maximum bond dimension for all trials over training.
+    Plot the max bond dimension over training.
 
-    This saves one plot per h value. Each plot contains all trials, plus the
-    mean across trials.
+    all_bond_dims has shape (trials, snapshots).
+    Shows all trials plus the mean across trials.
     """
     os.makedirs(outdir, exist_ok=True)
 
@@ -496,7 +496,7 @@ def plotting_bond_dims(results):
 
         plt.xlabel("Training steps")
         plt.ylabel("Max bond dimension")
-        plt.title(f"Bond dimension, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
+        plt.title(f"Max bond dim, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
         if n_trials <= 10:
             plt.legend()
         else:
@@ -504,10 +504,10 @@ def plotting_bond_dims(results):
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
 
-        fname = os.path.join(outdir, f"bond_dim_h_{h}_all_trials.png")
+        fname = os.path.join(outdir, f"bond_dim_max_h_{h}_all_trials.png")
         plt.savefig(fname, dpi=200)
         plt.close()
-        print(f"Saved bond-dimension plot to: {fname}")
+        print(f"Saved max bond-dimension plot to: {fname}")
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -587,15 +587,15 @@ def plotting_gradient_norms(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
+Lx = 2
 Ly = 2
 nlayers = 2
 howoften_tosave = 10
-trials = 20
-maxiter = 2000
+trials = 10
+maxiter = 700
 howoften_toreset = 7
 unitary = True
-sparse = True
+sparse = False
 perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500 
