@@ -210,20 +210,22 @@ class VariationalAnsatz(abc.ABC):
                 "Override this method in your subclass."
             )
         
-        t = self.lattice
-        n = t.num_qubits
         qc = self._circuit(params)
 
         if self.use_mps:
             s = qc.wavefunction()
         else:
             s = qc.state()
-        
-        if qc._nqubits - n > n:
-            cut = range(n)
+
+        if hasattr(self, 'ancilla_mps_positions') and self.ancilla_mps_positions:
+            cut = self.ancilla_mps_positions
         else:
-            cut = range(n, qc._nqubits)
-        
+            n = self.lattice.num_qubits
+            if qc._nqubits - n > n:
+                cut = list(range(n))
+            else:
+                cut = list(range(n, qc._nqubits))
+
         rho = qu.reduced_density_matrix(s, cut=list(cut))
         return K.exp(-qu.renyi_entropy(rho, 2))
 

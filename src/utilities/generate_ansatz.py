@@ -76,12 +76,15 @@ def onesetofunitaries(qc, claws, params, paramindex, measindx=None,measure=False
             qc = precompute(qc)
     return qc, paramindex
 
-def onelayerofsingleunitaries(qc, params, paramindex, n=None):
-    if n is None:
-        n = qc._nqubits
-
-    for i in range(n):
-        qc, paramindex = universalsingle(qc, i, params, paramindex)
+def onelayerofsingleunitaries(qc, params, paramindex, n=None, qubit_indices=None):
+    if qubit_indices is not None:
+        for i in qubit_indices:
+            qc, paramindex = universalsingle(qc, i, params, paramindex)
+    else:
+        if n is None:
+            n = qc._nqubits
+        for i in range(n):
+            qc, paramindex = universalsingle(qc, i, params, paramindex)
     return qc, paramindex
 
 def measurements(qc,plaquettes,params, paramindex, measindex):
@@ -250,109 +253,53 @@ def _decomposed_ccx(qc, c0, c1, target):
     qc.td(c1)
     qc.cnot(c0, c1)
 
-def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=None, reset_qubits=None, reset_direction=1, reset_layers=None):
+def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
+                                                       n_mps_qubits, mps_claws,
+                                                       mps_reset_qubits, active_reset_layers,
+                                                       sys_mps_positions):
     """
-    Construct a dynamic circuit for toric code lattice with probabilistic resets on system qubits.
-    
-    Instead of resetting ancilla qubits, this applies probabilistic resets to system qubits.
-    Each reset requires 2 additional qubits:
-    - One ancilla for probability control (parametrized Ry gate)
-    - One ancilla for measurement purification
-    
+    Construct a dynamic circuit for toric code lattice with probabilistic resets.
+
+    All qubit indices are pre-remapped MPS chain positions, computed by
+    ToricCodeAnsatz._build_interleaved_ordering().
+
     Args:
         params: Parameter vector
-        Lx, Ly: Lattice dimensions
-        nlayers: Number of layers (default: 2)
-        reset_qubits: List of system qubit indices to reset. If None, uses reset_direction.
-        reset_direction: Direction for default reset qubits (0=horizontal, 1=vertical, 2=plaquette centers)
-        reset_layers: List of layer indices on which to apply probabilistic resets. If None, resets are applied on every layer.
-    
-    Returns:
-        tc.MPSCircuit: The constructed circuit
+        nlayers: Number of layers
+        nparams: Expected parameter count
+        n_mps_qubits: Total qubits in the MPS chain
+        mps_claws: List of (q0_mps, q1_mps) pairs for Cartan blocks
+        mps_reset_qubits: List of (sys_mps, prob_mps, purif_mps) per reset,
+                          ordered by layer then by reset qubit
+        active_reset_layers: List of layer indices with resets
+        sys_mps_positions: List of system qubit MPS positions for final single-qubit layer
     """
-    toriccode = ToricCode(Lx, Ly)
-    nplaquettes = (Lx - 1) * (Ly - 1)
-    nq = 2 * Lx * Ly - Lx - Ly
-    
-    if nlayers is None:
-        nlayers = 2
-    
-    # Determine which system qubits to reset
-    if reset_qubits is None:
-        # Default: reset qubits based on reset_direction, currently resetting vertical qubits
-        reset_qubits = [toriccode.qubit_index(x, y, reset_direction) for x in range(Lx - 1) for y in range(Ly - 1)]
-        reset_qubits = [q for q in reset_qubits if q is not None]
-    
-    nresets_per_layer = len(reset_qubits)
-
-    # Choose which layers have probabilistic resets.
-    # By default, preserve the old behaviour and reset on every layer.
-    if reset_layers is None:
-        reset_layers = list(range(nlayers))
-    else:
-        reset_layers = sorted(set(int(layer) for layer in reset_layers))
-        invalid_layers = [layer for layer in reset_layers if layer < 0 or layer >= nlayers]
-        if invalid_layers:
-            raise ValueError(f"reset_layers contains invalid layer indices: {invalid_layers}. Valid range is 0 to {nlayers - 1}.")
-
-    n_reset_layers = len(reset_layers)
-    total_resets = nresets_per_layer * n_reset_layers
-    
-    # Each reset needs 2 ancillas: one for probability control, one for purification
-    nancillas = 2 * total_resets
-    
-    # Create circuit with system qubits + ancillas
-    qc = tc.MPSCircuit(nq + nancillas, split=split_conf)
-    
-    # Calculate number of parameters needed:
-    # - Unitaries: nplaquettes * 3 * 9 * nlayers (no more Cartan block connecting system qubits to plaquette ancillas, so 3 instead of 4)
-    # - Probability control: 1 parameter per reset (total_resets = nresets_per_layer * len(reset_layers))
-    # - Final single qubit unitaries: 3 * nq
-    nparams = nplaquettes * 3 * 9 * nlayers + total_resets + 3 * nq
-    
     if len(params) != nparams:
         raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
-    
+
+    qc = tc.MPSCircuit(n_mps_qubits, split=split_conf)
     paramindex = 0
-    
-    # Prepare claws for unitaries
-    claws = toriccode.all_claws() # No more plaquette qubits
-    claws = [claws[i::3 ][j] for i in range(3) for j in range((Lx - 1) * (Ly - 1))]
-    
-    ancilla_index = 0  # Track which ancilla pair to use
-    
+
+    nresets_per_layer = len(mps_reset_qubits) // len(active_reset_layers) if active_reset_layers else 0
+    reset_idx = 0
+
     for l in range(nlayers):
-        # Apply one set of unitaries
-        qc, paramindex = onesetofunitaries(qc, claws, params, paramindex)
+        qc, paramindex = onesetofunitaries(qc, mps_claws, params, paramindex)
 
-        # Apply probabilistic resets only on the requested layers
-        if l in reset_layers:
-            for sys_qubit in reset_qubits:
-                # Ancilla indices for this reset
-                prob_ancilla = nq + 2 * ancilla_index      # Probability control ancilla
-                purif_ancilla = nq + 2 * ancilla_index + 1  # Purification ancilla
+        if l in active_reset_layers:
+            for _ in range(nresets_per_layer):
+                sys_mps, prob_mps, purif_mps = mps_reset_qubits[reset_idx]
 
-                # Apply parametrized Ry to probability control ancilla
-                # This determines the probability of reset: |0⟩ cos(θ/2) + |1⟩ sin(θ/2)
-                qc.ry(prob_ancilla, theta=params[paramindex])
+                qc.ry(prob_mps, theta=params[paramindex])
                 paramindex += 1
 
-                # Probabilistic reset implementation:
-                # 1. Copy system qubit state to purification ancilla (controlled on prob_ancilla)
-                # 2. Reset system qubit to |0⟩ (controlled on prob_ancilla)
+                _decomposed_ccx(qc, prob_mps, sys_mps, purif_mps)
+                _decomposed_ccx(qc, prob_mps, purif_mps, sys_mps)
 
-                # Controlled CNOT from system qubit to purification ancilla to record its state
-                _decomposed_ccx(qc, prob_ancilla, sys_qubit, purif_ancilla)
+                reset_idx += 1
 
-                # Controlled reset: if prob_ancilla is |1⟩, reset sys_qubit to |0⟩
-                # This is done by controlled-X from purif_ancilla back to sys_qubit
-                _decomposed_ccx(qc, prob_ancilla, purif_ancilla, sys_qubit)
-
-                ancilla_index += 1
-    
-    # Final layer of single qubit unitaries on system qubits
-    qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex, nq)
-    print(f"single unitaries applied, param index: {paramindex}")
+    qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,
+                                                qubit_indices=sys_mps_positions)
     return qc
 
 

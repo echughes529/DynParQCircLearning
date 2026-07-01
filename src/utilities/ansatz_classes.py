@@ -85,8 +85,10 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
             self.total_resets = self.nresets_per_layer * len(self.active_reset_layers)
             self.nancillas = 2 * self.total_resets
-            self.nparams = (self.nplaquettes * 3 * 9 * self.nlayers + 
+            self.nparams = (self.nplaquettes * 3 * 9 * self.nlayers +
                           self.total_resets + 3 * self.lattice.num_qubits)
+
+            self._build_interleaved_ordering()
         elif self.unitary:
             self.nparams = self.nplaquettes * 4 * 9 * self.nlayers + 3 * self.lattice.num_qubits
             self.nancillas = 0
@@ -97,6 +99,103 @@ class ToricCodeAnsatz(VariationalAnsatz):
         
         print(self.__dict__)
         super().__post_init__()
+
+    def _build_interleaved_ordering(self):
+        """
+        Build an MPS qubit ordering that minimises the maximum two-qubit gate
+        distance across all Cartan block (claw) gates and CCX reset gates.
+
+        Uses random search over system qubit permutations, inserting ancilla
+        pairs after each reset qubit.
+        """
+        import random as _rng
+
+        nq = self.lattice.num_qubits
+        toriccode = self.lattice
+
+        if self.which_qubits_for_prob_reset is None:
+            reset_qubits = [toriccode.qubit_index(x, y, self.prob_reset_direction)
+                            for x in range(self.Lx - 1) for y in range(self.Ly - 1)]
+            reset_qubits = [q for q in reset_qubits if q is not None]
+        else:
+            reset_qubits = list(self.which_qubits_for_prob_reset)
+
+        reset_set = set(reset_qubits)
+        n_reset_layers = len(self.active_reset_layers)
+
+        claw_edges = toriccode.all_claws()
+
+        def _max_claw_dist(sys_order):
+            s2m = {}
+            pos = 0
+            for sq in sys_order:
+                s2m[sq] = pos
+                pos += 1
+                if sq in reset_set:
+                    pos += 2 * n_reset_layers
+            return max(abs(s2m[a] - s2m[b]) for a, b in claw_edges)
+
+        _rng.seed(42)
+        best_order = list(range(nq))
+        best_dist = _max_claw_dist(best_order)
+        n_trials = min(2_000_000, max(500_000, nq * 100_000))
+        for _ in range(n_trials):
+            order = list(range(nq))
+            _rng.shuffle(order)
+            d = _max_claw_dist(order)
+            if d < best_dist:
+                best_dist = d
+                best_order = order[:]
+
+        # Build the full MPS mapping from the best system qubit order
+        ancilla_pairs_per_sys = {}
+        ancilla_idx = 0
+        for _layer in self.active_reset_layers:
+            for sq in reset_qubits:
+                ancilla_pairs_per_sys.setdefault(sq, []).append(ancilla_idx)
+                ancilla_idx += 1
+
+        sys_to_mps = {}
+        ancilla_mps_positions = []
+        mps_reset_info = []
+        pos = 0
+        for sq in best_order:
+            sys_to_mps[sq] = pos
+            pos += 1
+            if sq in ancilla_pairs_per_sys:
+                for a_idx in ancilla_pairs_per_sys[sq]:
+                    prob_mps = pos
+                    purif_mps = pos + 1
+                    ancilla_mps_positions.extend([prob_mps, purif_mps])
+                    mps_reset_info.append((sys_to_mps[sq], prob_mps, purif_mps))
+                    pos += 2
+
+        self.sys_to_mps = sys_to_mps
+        self.ancilla_mps_positions = ancilla_mps_positions
+        self.n_mps_qubits = pos
+        self.sys_mps_positions = [sys_to_mps[i] for i in range(nq)]
+
+        # Pre-remap claws
+        claws = toriccode.all_claws()
+        nplaq = (self.Lx - 1) * (self.Ly - 1)
+        claws = [claws[i::3][j] for i in range(3) for j in range(nplaq)]
+        self.mps_claws = [(sys_to_mps[a], sys_to_mps[b]) for a, b in claws]
+
+        # Build reset triples in circuit-application order (layer by layer)
+        self.mps_reset_qubits = []
+        for _layer in self.active_reset_layers:
+            for sq in reset_qubits:
+                pairs = ancilla_pairs_per_sys[sq]
+                a_idx = pairs.pop(0)
+                self.mps_reset_qubits.append(mps_reset_info[a_idx])
+
+        max_claw = max(abs(sys_to_mps[a] - sys_to_mps[b]) for a, b in claw_edges)
+        max_ccx = max((abs(s - p) for s, p, _ in mps_reset_info), default=0)
+        print(f"MPS optimised ordering ({n_trials} random trials): "
+              f"{self.n_mps_qubits} qubits ({nq} system + {self.nancillas} ancilla)")
+        print(f"  System qubit order: {best_order}")
+        print(f"  Max claw distance: {max_claw}, max CCX distance: {max_ccx}")
+        print(f"  sys_to_mps: {self.sys_to_mps}")
 
     def __hash__(self):
         reset_layers_key = None if self.reset_layers is None else tuple(self.active_reset_layers)
@@ -109,7 +208,14 @@ class ToricCodeAnsatz(VariationalAnsatz):
         return self.__dict__ == other.__dict__
 
     def get_full_hamiltonian(self):
-        """Build the full sparse Hamiltonian for toric code."""
+        """Build the full sparse Hamiltonian for toric code.
+        Not compatible with interleaved MPS ordering (use_prob_resets + sparse).
+        """
+        if self.use_prob_resets:
+            raise NotImplementedError(
+                "Sparse Hamiltonian is not supported with interleaved MPS ordering "
+                "(use_prob_resets=True). Use use_mps=True with term-by-term expectation."
+            )
         strings, weights = self.lattice.hamiltonian_tc(1 - self.h, self.nancillas)
         perturbed_strings, perturbed_weights = self.lattice.hamiltonian_tc_perturbation(
             self.h, self.nancillas
@@ -169,10 +275,14 @@ class ToricCodeAnsatz(VariationalAnsatz):
             )
         elif self.use_prob_resets:
             return construct_dyn_circuit_toriccodelattice_prob_resets(
-                params, self.Lx, self.Ly, self.nlayers,
-                self.which_qubits_for_prob_reset,
-                reset_direction=self.prob_reset_direction,
-                reset_layers=self.active_reset_layers,
+                params,
+                nlayers=self.nlayers,
+                nparams=self.nparams,
+                n_mps_qubits=self.n_mps_qubits,
+                mps_claws=self.mps_claws,
+                mps_reset_qubits=self.mps_reset_qubits,
+                active_reset_layers=self.active_reset_layers,
+                sys_mps_positions=self.sys_mps_positions,
             )
         elif self.unitary:
             return construct_unitary_circuit_toriccodelattice(
@@ -183,25 +293,31 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 params, self.Lx, self.Ly, self.nlayers, self.howoften_toreset
             )
 
+    def _remap_qubit(self, logical_idx):
+        """Map a logical system qubit index to its MPS chain position."""
+        if self.use_prob_resets:
+            return self.sys_to_mps[logical_idx]
+        return logical_idx
+
     def _hamiltonian_terms(self) -> List[HamiltonianTerm]:
-        """Return Hamiltonian terms for toric code."""
+        """Return Hamiltonian terms for toric code, using MPS positions."""
         terms: List[HamiltonianTerm] = []
         t = self.lattice
         stars = t.all_stars()
         plqs = t.all_plaquettes()
-        
+
         for s in stars:
-            ops = tuple((tc.gates.z(), [op]) for op in s)
+            ops = tuple((tc.gates.z(), [self._remap_qubit(op)]) for op in s)
             terms.append((ops, -(1.0 - self.h)))
-        
+
         for p in plqs:
-            ops = tuple((tc.gates.x(), [op]) for op in p)
+            ops = tuple((tc.gates.x(), [self._remap_qubit(op)]) for op in p)
             terms.append((ops, -(1.0 - self.h)))
-        
+
         for i in range(t.num_qubits):
-            ops = ((tc.gates.z(), [i]),)
+            ops = ((tc.gates.z(), [self._remap_qubit(i)]),)
             terms.append((ops, -self.h))
-        
+
         return terms
 
 @dataclass
