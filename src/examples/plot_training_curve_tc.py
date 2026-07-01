@@ -586,10 +586,10 @@ def plotting_gradient_norms(results):
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
 Lx = 3
-Ly = 2
+Ly = 3
 nlayers = 2
-howoften_tosave = 1
-trials = 200
+howoften_tosave = 10
+trials = 100
 maxiter = 2000
 howoften_toreset = 7
 unitary = True
