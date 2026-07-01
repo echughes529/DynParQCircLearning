@@ -21,6 +21,7 @@ jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
 
 K = tc.set_backend("jax")
+tc.set_dtype("complex128")
 
 from qiskit.circuit import QuantumCircuit, ParameterVector, QuantumRegister, ClassicalRegister
 from src.utilities.generate_toric_code_hamiltonian import *
@@ -426,7 +427,7 @@ def test_ansatz(param, n, nlayers, n_resets):
 
     return paramc, c
 
-split_conf = {}
+split_conf = None
 
 def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
     n_resets = nlayers*(n-1)
