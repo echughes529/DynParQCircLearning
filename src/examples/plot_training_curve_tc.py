@@ -662,22 +662,22 @@ if __name__ == "__main__":
     # Choosing which results to obtain
     # ------------------------------------------------------------------------------------------
     plotting(results)
-
+    
     if track_grads:
         plotting_gradient_norms(results)
     if track_params:
         plotting_thetas(results)
-
-    if plot_final_energies:
+    
+    if plot_final_energies:  
         plotting_final_energies(results)
-
+        
     if save_final_energies:
         final_energies_csv_path = os.path.join(outdir, "final_energies_by_trial.csv")
         save_final_energies_csv(results, final_energies_csv_path)
-
+    
     if save_training_history:
         training_history_csv_path = os.path.join(outdir, "training_history.csv")
         save_training_history_csv(results, training_history_csv_path)
-
-    if track_bond_dim:
-        plotting_bond_dims(results)
+        
+if track_bond_dim:
+    plotting_bond_dims(results)

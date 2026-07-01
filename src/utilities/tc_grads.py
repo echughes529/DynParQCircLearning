@@ -21,8 +21,6 @@ def grad_tc(ansatz, hamiltonian, backend): # n, l, trials=10
 def qgt_tc(ansatz, backend): # n, l, trials=10
     def s(params):
         circ = ansatz(params)
-        if hasattr(circ, 'wavefunction'):
-            return circ.wavefunction()
         return circ.state()
     get_qgt_tc = backend.jit(experimental.qng(s, mode="fwd"))
     return get_qgt_tc

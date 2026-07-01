@@ -4,10 +4,7 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
-"""Variational Gibbs state preparation based on variational quantum imaginary time evolution.
-
-Note: not MPS-compatible — uses DMCircuit and density matrices throughout.
-"""
+"""Variational Gibbs state preparation based on variational quantum imaginary time evolution."""
 
 import numpy as np
 

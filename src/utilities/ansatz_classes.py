@@ -24,9 +24,7 @@ from src.utilities.generate_ansatz import (
     construct_dyn_circuit_toriccodelattice,
     get_nresets_per_layer_toriccode,
     construct_unitary_circuit_brickwork,
-    construct_dyn_circuit_brickwork,
-    make_split_conf,
-    split_conf,
+    construct_dyn_circuit_brickwork
 )
 
 
@@ -52,15 +50,10 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
     unitary: bool = False
 
-    bond_dim: int = 2
-
     def __post_init__(self):
-        import src.utilities.generate_ansatz as _ga
-        _ga.split_conf = make_split_conf(self.bond_dim)
-
         self.lattice = ToricCode(self.Lx, self.Ly)
         self.nplaquettes = (self.Lx - 1) * (self.Ly - 1)
-
+        
         if self.use_small_angle_initialization:
             self.nparams = 3 * self.lattice.num_qubits * (self.nlayers + 1)
             self.nancillas = 0
@@ -100,10 +93,10 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
     def __hash__(self):
         reset_layers_key = None if self.reset_layers is None else tuple(self.active_reset_layers)
-        return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h,
+        return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h, 
                     self.trials, self.maxiter, self.howoften_tosave, self.learning_rate,
                     self.sparse, self.use_prob_resets, self.prob_reset_direction,
-                    reset_layers_key, self.use_mps, self.bond_dim))
+                    reset_layers_key))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -216,12 +209,8 @@ class OneDBrickwork(VariationalAnsatz):
     J : float = 1.0
     unitary : bool = False
     n_ancillas = None
-    bond_dim: int = 2
 
     def __post_init__(self):
-        import src.utilities.generate_ansatz as _ga
-        _ga.split_conf = make_split_conf(self.bond_dim)
-
         if self.n_ancillas is None and not(self.unitary):
             self.n_ancillas = self.num_qubits-1
         if self.unitary:
@@ -243,7 +232,7 @@ class OneDBrickwork(VariationalAnsatz):
 
 
     def __hash__(self):
-        return hash((self.num_qubits, self.nlayers, self.howoften_toreset, self.h, self.trials, self.maxiter, self.howoften_tosave, self.learning_rate, self.sparse, self.use_mps, self.bond_dim))
+        return hash((self.num_qubits, self.nlayers, self.howoften_toreset, self.h, self.trials, self.maxiter, self.howoften_tosave, self.learning_rate, self.sparse))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
