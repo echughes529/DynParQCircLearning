@@ -161,10 +161,9 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             reset_layers=reset_layers,
         )
 
-        final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims = ansatz.optimize(
+        final_E, final_purity, all_E, all_P, all_param, all_grads = ansatz.optimize(
             track_params=track_params,
             track_grads=track_grads,
-            track_bond_dim=track_bond_dim,
         )
         reset_layers_used = None
         if use_prob_resets and hasattr(ansatz, "active_reset_layers"):
@@ -179,7 +178,6 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             "all_P": all_P,
             "all_param": all_param,
             "all_grads": all_grads,
-            "all_bond_dims": all_bond_dims,
             "reset_layers_used": reset_layers_used,
             "reset_layers_input": reset_layers,
             "reset_param_slice": reset_param_slice,
@@ -445,72 +443,6 @@ def plotting_final_energies(results):
 
 
 
-def plotting_bond_dims(results):
-    """
-    Plot the tracked maximum bond dimension for all trials over training.
-
-    This saves one plot per h value. Each plot contains all trials, plus the
-    mean across trials.
-    """
-    os.makedirs(outdir, exist_ok=True)
-
-    for h in h_list:
-        all_bond_dims = results[h].get("all_bond_dims")
-
-        if all_bond_dims is None:
-            print(f"No bond-dimension history found for h={h}; skipping bond-dim plot.")
-            continue
-
-        all_bond_dims = np.asarray(all_bond_dims, dtype=float)
-
-        if all_bond_dims.ndim != 2:
-            raise ValueError(
-                f"Expected all_bond_dims to have shape (trials, snapshots), "
-                f"but got shape {all_bond_dims.shape} for h={h}"
-            )
-
-        n_trials, n_available_snapshots = all_bond_dims.shape
-        steps_for_h = steps[:n_available_snapshots]
-
-        print(f"all_bond_dims shape for h={h}: {all_bond_dims.shape}")
-        print(f"all_bond_dims min/max for h={h}: {np.nanmin(all_bond_dims)}, {np.nanmax(all_bond_dims)}")
-
-        plt.figure(figsize=(5, 4))
-
-        for trial_idx in range(n_trials):
-            plt.plot(
-                steps_for_h,
-                all_bond_dims[trial_idx],
-                alpha=0.35,
-                linewidth=1,
-                label=f"trial {trial_idx + 1}" if n_trials <= 10 else None,
-            )
-
-        mean_bond_dim = np.nanmean(all_bond_dims, axis=0)
-        plt.plot(
-            steps_for_h,
-            mean_bond_dim,
-            color="black",
-            linewidth=2,
-            label="mean across trials",
-        )
-
-        plt.xlabel("Training steps")
-        plt.ylabel("Max bond dimension")
-        plt.title(f"Bond dimension, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
-        if n_trials <= 10:
-            plt.legend()
-        else:
-            plt.legend(["mean across trials"])
-        plt.tight_layout()
-        plt.grid(visible=True, which='both', linestyle='--')
-
-        fname = os.path.join(outdir, f"bond_dim_h_{h}_all_trials.png")
-        plt.savefig(fname, dpi=200)
-        plt.close()
-        print(f"Saved bond-dimension plot to: {fname}")
-
-
 # ------------------------------------------------------------------------------------------------------------
 # Plot gradient norms over training
 # ------------------------------------------------------------------------------------------------------------
@@ -628,8 +560,8 @@ Lx = 3
 Ly = 3
 nlayers = 2
 howoften_tosave = 10
-trials = 10
-maxiter = 2000
+trials = 30
+maxiter = 500
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -645,7 +577,6 @@ reset_layers = [1]
 
 track_grads = True
 track_params = True
-track_bond_dim = False
 
 plot_final_energies = True
 save_final_energies = True
@@ -717,6 +648,3 @@ if __name__ == "__main__":
     if save_training_history:
         training_history_csv_path = os.path.join(outdir, "training_history.csv")
         save_training_history_csv(results, training_history_csv_path)
-        
-if track_bond_dim:
-    plotting_bond_dims(results)
