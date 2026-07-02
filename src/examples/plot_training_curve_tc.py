@@ -170,6 +170,8 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
         if use_prob_resets and hasattr(ansatz, "active_reset_layers"):
             reset_layers_used = list(ansatz.active_reset_layers)
 
+        reset_param_slice = getattr(ansatz, "reset_param_slice", None)
+
         results[h] = {
             "final_E": final_E,
             "final_purity": final_purity,
@@ -180,6 +182,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             "all_bond_dims": all_bond_dims,
             "reset_layers_used": reset_layers_used,
             "reset_layers_input": reset_layers,
+            "reset_param_slice": reset_param_slice,
         }
 
     return results
@@ -511,12 +514,44 @@ def plotting_bond_dims(results):
 # ------------------------------------------------------------------------------------------------------------
 # Plot gradient norms over training
 # ------------------------------------------------------------------------------------------------------------
+def _plot_one_gradient_norm_series(gradient_norms, steps_for_h, title, fname):
+    """Plot one gradient-norm series (all trials + mean), log-scale y, save to fname."""
+    n_trials = gradient_norms.shape[0]
+    plt.figure(figsize=(5, 4))
+
+    for trial_idx in range(n_trials):
+        plt.plot(
+            steps_for_h,
+            gradient_norms[trial_idx],
+            alpha=0.35,
+            linewidth=1,
+            label=f"trial {trial_idx + 1}" if n_trials <= 10 else None,
+        )
+
+    mean_grad_norm = np.nanmean(gradient_norms, axis=0)
+    plt.plot(steps_for_h, mean_grad_norm, color="black", linewidth=2, label="mean across trials")
+
+    plt.yscale("log")
+    plt.xlabel("Training steps")
+    plt.ylabel("Gradient norm")
+    plt.title(title)
+    if n_trials <= 10:
+        plt.legend()
+    else:
+        plt.legend(["mean across trials"])
+    plt.tight_layout()
+    plt.grid(visible=True, which='both', linestyle='--')
+
+    plt.savefig(fname, dpi=200)
+    plt.close()
+    print(f"Saved gradient-norm plot to: {fname}")
+
+
 def plotting_gradient_norms(results):
     """
-    Plot the L2 norm of the gradient vector over training.
-
-    This uses the stored full gradient history `all_grads`, which should have
-    shape (trials, snapshots, nparams). One plot is saved per h value.
+    Plot L2 gradient norm over training, split per h into reset-param and
+    non-reset-param plots (using reset_param_slice from running_for_hs).
+    Falls back to one combined plot if no reset-param split is available.
     """
     os.makedirs(outdir, exist_ok=True)
 
@@ -535,51 +570,55 @@ def plotting_gradient_norms(results):
                 f"but got shape {all_grads.shape} for h={h}"
             )
 
-        gradient_norms = np.linalg.norm(all_grads, axis=2)
-        # shape: (trials, snapshots)
-
-        n_trials, n_available_snapshots = gradient_norms.shape
+        n_trials, n_available_snapshots, n_params = all_grads.shape
         steps_for_h = steps[:n_available_snapshots]
 
         print(f"all_grads shape for h={h}: {all_grads.shape}")
-        print(f"gradient_norms shape for h={h}: {gradient_norms.shape}")
-        print(f"gradient_norms min/max for h={h}: {np.nanmin(gradient_norms)}, {np.nanmax(gradient_norms)}")
 
-        plt.figure(figsize=(5, 4))
+        reset_param_slice = results[h].get("reset_param_slice")
 
-        for trial_idx in range(n_trials):
-            plt.plot(
+        if reset_param_slice is None:
+            gradient_norms = np.linalg.norm(all_grads, axis=2)
+            print(f"gradient_norms shape for h={h}: {gradient_norms.shape}")
+            print(f"gradient_norms min/max for h={h}: {np.nanmin(gradient_norms)}, {np.nanmax(gradient_norms)}")
+
+            fname = os.path.join(outdir, f"gradient_norm_h_{h}_all_trials.png")
+            _plot_one_gradient_norm_series(
+                gradient_norms,
                 steps_for_h,
-                gradient_norms[trial_idx],
-                alpha=0.35,
-                linewidth=1,
-                label=f"trial {trial_idx + 1}" if n_trials <= 10 else None,
+                title=f"Gradient norm, h={h}, {Lx}x{Ly}, nlayers:{nlayers}",
+                fname=fname,
             )
+            continue
 
-        mean_grad_norm = np.nanmean(gradient_norms, axis=0)
-        plt.plot(
+        reset_idx = np.arange(n_params)[reset_param_slice]
+        nonreset_mask = np.ones(n_params, dtype=bool)
+        nonreset_mask[reset_idx] = False
+
+        reset_norms = np.linalg.norm(all_grads[:, :, reset_idx], axis=2)
+        nonreset_norms = np.linalg.norm(all_grads[:, :, nonreset_mask], axis=2)
+
+        print(f"reset param slice for h={h}: {reset_param_slice} ({reset_idx.size} params)")
+        print(f"reset_norms shape for h={h}: {reset_norms.shape}")
+        print(f"reset_norms min/max for h={h}: {np.nanmin(reset_norms)}, {np.nanmax(reset_norms)}")
+        print(f"nonreset_norms shape for h={h}: {nonreset_norms.shape}")
+        print(f"nonreset_norms min/max for h={h}: {np.nanmin(nonreset_norms)}, {np.nanmax(nonreset_norms)}")
+
+        reset_fname = os.path.join(outdir, f"gradient_norm_reset_h_{h}_all_trials.png")
+        _plot_one_gradient_norm_series(
+            reset_norms,
             steps_for_h,
-            mean_grad_norm,
-            color="black",
-            linewidth=2,
-            label="mean across trials",
+            title=f"Reset-param gradient norm, h={h}, {Lx}x{Ly}, nlayers:{nlayers}",
+            fname=reset_fname,
         )
 
-        plt.yscale("log")
-        plt.xlabel("Training steps")
-        plt.ylabel("Gradient norm")
-        plt.title(f"Gradient norm, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
-        if n_trials <= 10:
-            plt.legend()
-        else:
-            plt.legend(["mean across trials"])
-        plt.tight_layout()
-        plt.grid(visible=True, which='both', linestyle='--')
-
-        fname = os.path.join(outdir, f"gradient_norm_h_{h}_all_trials.png")
-        plt.savefig(fname, dpi=200)
-        plt.close()
-        print(f"Saved gradient-norm plot to: {fname}")
+        nonreset_fname = os.path.join(outdir, f"gradient_norm_nonreset_h_{h}_all_trials.png")
+        _plot_one_gradient_norm_series(
+            nonreset_norms,
+            steps_for_h,
+            title=f"Non-reset-param gradient norm, h={h}, {Lx}x{Ly}, nlayers:{nlayers}",
+            fname=nonreset_fname,
+        )
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -589,7 +628,7 @@ Lx = 3
 Ly = 3
 nlayers = 2
 howoften_tosave = 10
-trials = 100
+trials = 10
 maxiter = 2000
 howoften_toreset = 7
 unitary = True
