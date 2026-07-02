@@ -91,6 +91,25 @@ class ToricCodeAnsatz(VariationalAnsatz):
         print(self.__dict__)
         super().__post_init__()
 
+    @property
+    def reset_param_slice(self):
+        """
+        Slice of the flat parameter vector holding the probabilistic-reset
+        theta parameters, or None if this ansatz has no reset parameters.
+
+        Layout (only valid when use_prob_resets is True):
+            [0, n_two_qubit)                        -> Cartan-block params
+            [n_two_qubit, n_two_qubit+total_resets)  -> reset-theta params
+            [n_two_qubit+total_resets, nparams)      -> final single-qubit params
+        """
+        if not getattr(self, "use_prob_resets", False):
+            return None
+        total_resets = getattr(self, "total_resets", 0)
+        if not total_resets:
+            return None
+        n_two_qubit = self.nplaquettes * 3 * 9 * self.nlayers
+        return slice(n_two_qubit, n_two_qubit + total_resets)
+
     def __hash__(self):
         reset_layers_key = None if self.reset_layers is None else tuple(self.active_reset_layers)
         return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h, 
@@ -134,14 +153,14 @@ class ToricCodeAnsatz(VariationalAnsatz):
         )
 
         # If using probabilistic resets, overwrite the reset parameters
-        # with very small values in [0, 1e-5]
+        # with very small values in [0, 1e-5]---- changed to regular initialisation
         if self.use_prob_resets:
             n_reset = self.total_resets
             reset_vals = jax.random.uniform(
                 key_reset,
                 shape=[self.trials, n_reset],
                 minval=0.0,
-                maxval=1e-5
+                maxval=jnp.pi # changed from small
             )
 
             # reset parameters sit between the two-qubit block and the final
