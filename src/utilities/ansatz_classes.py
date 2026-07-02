@@ -152,15 +152,15 @@ class ToricCodeAnsatz(VariationalAnsatz):
             maxval=jnp.pi
         )
 
-        # If using probabilistic resets, overwrite the reset parameters
-        # with very small values in [0, 1e-5]---- changed to regular initialisation
+        # If using probabilistic resets, overwrite the reset parameters with
+        # small values in [0, 0.3]. 
         if self.use_prob_resets:
             n_reset = self.total_resets
             reset_vals = jax.random.uniform(
                 key_reset,
                 shape=[self.trials, n_reset],
                 minval=0.0,
-                maxval=jnp.pi # changed from small
+                maxval=0.3
             )
 
             # reset parameters sit between the two-qubit block and the final
