@@ -239,7 +239,7 @@ class VariationalAnsatz(abc.ABC):
         self.allparams = np.zeros((self.trials, nsnapshots, self.nparams))
         self.allgrads = np.zeros((self.trials, nsnapshots, self.nparams))
 
-        if getattr(self, "use_prob_resets", False):
+        if getattr(self, "use_reset_capable_ansatz", False):
             self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan) # trials x nsnapshots array initialised with null vector values
         else:
             self.all_prob_reset_theta_means = None

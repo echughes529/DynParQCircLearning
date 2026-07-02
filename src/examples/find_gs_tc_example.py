@@ -59,7 +59,7 @@ if __name__ == "__main__":
         trials=trials,
         maxiter=maxiter,
         howoften_tosave=howoften_tosave,
-        use_prob_resets=True,
+        use_reset_capable_ansatz=True,
         sparse=True,
         perform_noisy_simulations=False,
         #noise_rate=5e-2,

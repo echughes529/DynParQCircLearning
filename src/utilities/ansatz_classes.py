@@ -39,8 +39,11 @@ class ToricCodeAnsatz(VariationalAnsatz):
     howoften_toreset: int = 1
     h: float = 0.0
     
-    # Ansatz selection
-    use_prob_resets: bool = True
+    # Ansatz selection. use_reset_capable_ansatz picks the ansatz family
+    # (construct_dyn_circuit_toriccodelattice_prob_resets); whether any
+    # resets are actually applied, and on which layers, is controlled
+    # entirely by reset_layers (None or [] => no resets, same ansatz).
+    use_reset_capable_ansatz: bool = True
     which_qubits_for_prob_reset: Optional[list] = None
     prob_reset_direction: int = 1 # vertical
     reset_layers: Optional[list] = None
@@ -57,7 +60,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         if self.use_small_angle_initialization:
             self.nparams = 3 * self.lattice.num_qubits * (self.nlayers + 1)
             self.nancillas = 0
-        elif self.use_prob_resets:
+        elif self.use_reset_capable_ansatz:
             if self.which_qubits_for_prob_reset is None:
                 self.nresets_per_layer = get_nresets_per_layer_toriccode(
                     self.Lx, self.Ly, reset_direction=self.prob_reset_direction
@@ -66,7 +69,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 self.nresets_per_layer = len(self.which_qubits_for_prob_reset)
 
             if self.reset_layers is None:
-                self.active_reset_layers = list(range(self.nlayers))
+                self.active_reset_layers = []
             else:
                 self.active_reset_layers = sorted(set(int(layer) for layer in self.reset_layers))
                 invalid_layers = [layer for layer in self.active_reset_layers if layer < 0 or layer >= self.nlayers]
@@ -97,12 +100,12 @@ class ToricCodeAnsatz(VariationalAnsatz):
         Slice of the flat parameter vector holding the probabilistic-reset
         theta parameters, or None if this ansatz has no reset parameters.
 
-        Layout (only valid when use_prob_resets is True):
+        Layout (only valid when use_reset_capable_ansatz is True):
             [0, n_two_qubit)                        -> Cartan-block params
             [n_two_qubit, n_two_qubit+total_resets)  -> reset-theta params
             [n_two_qubit+total_resets, nparams)      -> final single-qubit params
         """
-        if not getattr(self, "use_prob_resets", False):
+        if not getattr(self, "use_reset_capable_ansatz", False):
             return None
         total_resets = getattr(self, "total_resets", 0)
         if not total_resets:
@@ -112,9 +115,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
     def __hash__(self):
         reset_layers_key = None if self.reset_layers is None else tuple(self.active_reset_layers)
-        return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h, 
+        return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h,
                     self.trials, self.maxiter, self.howoften_tosave, self.learning_rate,
-                    self.sparse, self.use_prob_resets, self.prob_reset_direction,
+                    self.sparse, self.use_reset_capable_ansatz, self.prob_reset_direction,
                     reset_layers_key))
 
     def __eq__(self, other):
@@ -152,9 +155,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
             maxval=jnp.pi
         )
 
-        # If using probabilistic resets, overwrite the reset parameters with
-        # small values in [0, 0.3]. 
-        if self.use_prob_resets:
+        # If using the reset-capable ansatz, overwrite the reset parameters
+        # with small values in [0, 0.3].
+        if self.use_reset_capable_ansatz:
             n_reset = self.total_resets
             reset_vals = jax.random.uniform(
                 key_reset,
@@ -179,7 +182,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
             return construct_smallangle_init_toriccodelattice(
                 params, self.Lx, self.Ly, self.nlayers
             )
-        elif self.use_prob_resets:
+        elif self.use_reset_capable_ansatz:
             return construct_dyn_circuit_toriccodelattice_prob_resets(
                 params, self.Lx, self.Ly, self.nlayers,
                 self.which_qubits_for_prob_reset,

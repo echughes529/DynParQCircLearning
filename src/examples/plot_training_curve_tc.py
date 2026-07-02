@@ -133,7 +133,7 @@ def save_final_energies_csv(results, csv_path):
 
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
-                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
+                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_reset_capable_ansatz=False,
                    reset_layers=None,
                    ):
 
@@ -157,7 +157,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             perform_noisy_simulations=perform_noisy_simulations,
             noise_rate=noise_rate,
             number_of_shots=number_of_shots,
-            use_prob_resets=use_prob_resets,
+            use_reset_capable_ansatz=use_reset_capable_ansatz,
             reset_layers=reset_layers,
         )
 
@@ -166,7 +166,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             track_grads=track_grads,
         )
         reset_layers_used = None
-        if use_prob_resets and hasattr(ansatz, "active_reset_layers"):
+        if use_reset_capable_ansatz and hasattr(ansatz, "active_reset_layers"):
             reset_layers_used = list(ansatz.active_reset_layers)
 
         reset_param_slice = getattr(ansatz, "reset_param_slice", None)
@@ -214,7 +214,7 @@ def plotting(results):
         
         plt.xlabel("Training steps")
         plt.ylabel("E/n")
-        plt.title(f"{Lx}x{Ly}, nlayers:{nlayers}, trials: {trials}, resets: {use_prob_resets}")
+        plt.title(f"{Lx}x{Ly}, nlayers:{nlayers}, trials: {trials}, reset_layers: {reset_layers}")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
@@ -228,7 +228,7 @@ def plotting(results):
                 plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x3
         
         # ------------------------------------------------------------------------------------------------------------
-        fname = os.path.join(outdir, f"{Lx}x{Ly}_nlayers_{nlayers}_resets_{use_prob_resets}.png") 
+        fname = os.path.join(outdir, f"{Lx}x{Ly}_nlayers_{nlayers}_resets_{bool(reset_layers)}.png")
         # ------------------------------------------------------------------------------------------------------------
         
         plt.savefig(fname, dpi=200)
@@ -313,21 +313,19 @@ def plotting_thetas(results):
     reset_layers_used = results[h].get("reset_layers_used")
     reset_layers_input = results[h].get("reset_layers_input")
 
-    if reset_layers_used is None:
-        active_reset_layers = list(range(nlayers))
-    else:
-        active_reset_layers = list(reset_layers_used)
-
-    if reset_layers_input is None:
-        reset_layers_label = f"all layers {active_reset_layers}"
-    else:
-        reset_layers_label = str(active_reset_layers)
+    # reset_layers_used is None or [] => no resets (same ansatz, zero reset params).
+    active_reset_layers = list(reset_layers_used) if reset_layers_used else []
+    reset_layers_label = str(active_reset_layers)
 
     n_reset_thetas = n_resets_per_layer * len(active_reset_layers)
 
     print(f"reset_layers input: {reset_layers_input}")
     print(f"reset_layers used: {active_reset_layers}")
     print(f"n_reset_thetas: {n_reset_thetas}")
+
+    if n_reset_thetas == 0:
+        print(f"No reset-theta parameters for h={h}; skipping theta plot.")
+        return
 
     theta_start = n_two_q_params_ron
     theta_stop = theta_start + n_reset_thetas
@@ -560,20 +558,21 @@ Lx = 3
 Ly = 3
 nlayers = 2
 howoften_tosave = 10
-trials = 30
-maxiter = 500
+trials = 100
+maxiter = 100000
 howoften_toreset = 7
 unitary = True
 sparse = True
 perform_noisy_simulations = False
 noise_rate = 5e-2
-number_of_shots = 500 
-use_prob_resets = True
+number_of_shots = 500
+use_reset_capable_ansatz = True
 
-# Choose which ansatz layers get probabilistic resets.
-# Use None to apply resets on every layer, preserving the old behaviour.
+# Choose which ansatz layers get probabilistic resets. This is the sole
+# on/off control: None (or []) means no resets at all, using the exact
+# same ansatz structure as when resets are active.
 # Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = [1]
+reset_layers = []
 
 track_grads = True
 track_params = True
@@ -625,7 +624,7 @@ if __name__ == "__main__":
                              sparse=sparse, 
                              perform_noisy_simulations=perform_noisy_simulations,
                              number_of_shots=number_of_shots,
-                             use_prob_resets=use_prob_resets,
+                             use_reset_capable_ansatz=use_reset_capable_ansatz,
                              reset_layers=reset_layers,
                              )
     # ------------------------------------------------------------------------------------------

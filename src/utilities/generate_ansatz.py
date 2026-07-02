@@ -246,7 +246,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
         nlayers: Number of layers (default: 2)
         reset_qubits: List of system qubit indices to reset. If None, uses reset_direction.
         reset_direction: Direction for default reset qubits (0=horizontal, 1=vertical, 2=plaquette centers)
-        reset_layers: List of layer indices on which to apply probabilistic resets. If None, resets are applied on every layer.
+        reset_layers: List of layer indices on which to apply probabilistic resets. If None (or []), no resets are applied.
     
     Returns:
         tc.Circuit: The constructed circuit
@@ -267,9 +267,9 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, Lx, Ly, nlayers=N
     nresets_per_layer = len(reset_qubits)
 
     # Choose which layers have probabilistic resets.
-    # By default, preserve the old behaviour and reset on every layer.
+    # None means no resets at all (same ansatz structure, zero reset gates).
     if reset_layers is None:
-        reset_layers = list(range(nlayers))
+        reset_layers = []
     else:
         reset_layers = sorted(set(int(layer) for layer in reset_layers))
         invalid_layers = [layer for layer in reset_layers if layer < 0 or layer >= nlayers]
