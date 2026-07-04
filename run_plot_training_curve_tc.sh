@@ -6,7 +6,14 @@
 #SBATCH --error=/dev/null
 #SBATCH --partition=ICF-Free
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:a40:1
+# --- GPU selection ---
+# Default: A40 (46GB VRAM). For large lattices where building the full
+# Hamiltonian needs more VRAM, switch to H200 (141GB VRAM) either by:
+#   (a) commenting out the a40 line below and uncommenting the h200 line, or
+#   (b) overriding at submit time without editing this file:
+#       sbatch --gres=gpu:nvidia_h200:1 run_plot_training_curve_tc.sh
+# # SBATCH --gres=gpu:a40:1
+#SBATCH --gres=gpu:nvidia_h200:1
 
 # --- Move into the repository root explicitly ---
 mkdir -p /home/s1931382/DynParQCircLearning/logs
