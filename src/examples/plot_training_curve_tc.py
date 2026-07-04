@@ -6,6 +6,7 @@ import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 from src.utilities.generate_toric_code_hamiltonian import ToricCode
 from src.utilities.ansatz_classes import ToricCodeAnsatz
@@ -132,6 +133,69 @@ def save_final_energies_csv(results, csv_path):
     return csv_path
 
 
+# ------------------------------------------------------------------------------------------------------------
+# Save per-term Hamiltonian expectation values to CSV
+# ------------------------------------------------------------------------------------------------------------
+def save_term_expectations_csv(results, csv_path):
+    """
+    Save the unweighted expectation value <O_term> of every individual Hamiltonian
+    term, at every recorded training-step snapshot, for every trial.
+
+    One row is written for each `(h, trial, training_step, term)` quadruple.
+    """
+    rows = []
+
+    for h in h_list:
+        result_for_h = results[h]
+        all_term_exp = result_for_h.get("all_term_expectations")
+        term_labels = result_for_h.get("term_labels")
+        term_coeffs = result_for_h.get("term_coeffs")
+
+        if all_term_exp is None or term_labels is None:
+            continue
+
+        all_term_exp = np.asarray(all_term_exp, dtype=float)
+        n_trials, n_available_snapshots, _n_terms = all_term_exp.shape
+        steps_for_h = steps[:n_available_snapshots]
+
+        for trial_idx in range(n_trials):
+            for snapshot_idx, step in enumerate(steps_for_h):
+                for term_idx, (label, family) in enumerate(term_labels):
+                    expectation = float(all_term_exp[trial_idx, snapshot_idx, term_idx])
+                    coeff = float(term_coeffs[term_idx]) if term_coeffs is not None else None
+
+                    rows.append({
+                        "h": h,
+                        "trial": int(trial_idx + 1),
+                        "training_step": int(step),
+                        "term_label": label,
+                        "term_family": family,
+                        "expectation": expectation,
+                        "weighted_expectation": (coeff * expectation) if coeff is not None else "",
+                    })
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "h",
+                "trial",
+                "training_step",
+                "term_label",
+                "term_family",
+                "expectation",
+                "weighted_expectation",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Saved term expectations CSV to: {csv_path}")
+    return csv_path
+
+
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_reset_capable_ansatz=False,
                    reset_layers=None,
@@ -161,15 +225,20 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             reset_layers=reset_layers,
         )
 
-        final_E, final_purity, all_E, all_P, all_param, all_grads = ansatz.optimize(
+        final_E, final_purity, all_E, all_P, all_param, all_grads, all_term_expectations = ansatz.optimize(
             track_params=track_params,
             track_grads=track_grads,
+            track_term_expectations=track_term_expectations,
+            term_expectations_batch_size=term_expectations_batch_size,
         )
         reset_layers_used = None
         if use_reset_capable_ansatz and hasattr(ansatz, "active_reset_layers"):
             reset_layers_used = list(ansatz.active_reset_layers)
 
         reset_param_slice = getattr(ansatz, "reset_param_slice", None)
+
+        term_labels = ansatz.term_labels() if hasattr(ansatz, "term_labels") else None
+        term_coeffs = [coeff for _, coeff in ansatz._hamiltonian_terms()] if track_term_expectations else None
 
         results[h] = {
             "final_E": final_E,
@@ -178,6 +247,9 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             "all_P": all_P,
             "all_param": all_param,
             "all_grads": all_grads,
+            "all_term_expectations": all_term_expectations,
+            "term_labels": term_labels,
+            "term_coeffs": term_coeffs,
             "reset_layers_used": reset_layers_used,
             "reset_layers_input": reset_layers,
             "reset_param_slice": reset_param_slice,
@@ -459,7 +531,7 @@ def _plot_one_gradient_norm_series(gradient_norms, steps_for_h, title, fname):
         )
 
     mean_grad_norm = np.nanmean(gradient_norms, axis=0)
-    plt.plot(steps_for_h, mean_grad_norm, color="black", linewidth=2, label="mean across trials")
+    mean_line, = plt.plot(steps_for_h, mean_grad_norm, color="black", linewidth=2, label="mean across trials")
 
     plt.yscale("log")
     plt.xlabel("Training steps")
@@ -468,7 +540,12 @@ def _plot_one_gradient_norm_series(gradient_norms, steps_for_h, title, fname):
     if n_trials <= 10:
         plt.legend()
     else:
-        plt.legend(["mean across trials"])
+        # Explicitly target the mean line's own handle, not plot order --
+        # legend([label_string]) zips labels against ALL plotted artists in
+        # the order they were added, so it would otherwise mislabel the
+        # first per-trial line (blue) as "mean across trials" instead of
+        # the actual black mean line.
+        plt.legend(handles=[mean_line], labels=["mean across trials"])
     plt.tight_layout()
     plt.grid(visible=True, which='both', linestyle='--')
 
@@ -551,15 +628,181 @@ def plotting_gradient_norms(results):
         )
 
 
+# ------------------------------------------------------------------------------------------------------------
+# Plot per-Hamiltonian-term expectation values over training
+# ------------------------------------------------------------------------------------------------------------
+def plotting_term_expectations_by_family(results):
+    """
+    Plot the mean expectation value of each Hamiltonian-term family (star,
+    plaquette, and field when its coefficient is nonzero) over training, one
+    line per trial, colored by that trial's own final energy.
+
+    Unlike averaging across trials, this keeps every trial visible so that
+    trials landing on the wrong final energy can be visually compared
+    against trials that converged correctly, to see which family of
+    stabilizers failed to lock in.
+    """
+    os.makedirs(outdir, exist_ok=True)
+
+    for h in h_list:
+        all_term_exp = results[h].get("all_term_expectations")
+        term_labels = results[h].get("term_labels")
+        term_coeffs = results[h].get("term_coeffs")
+        final_E = results[h].get("final_E")
+
+        if all_term_exp is None or term_labels is None:
+            print(f"No term-expectation history found for h={h}; skipping by-family term plot.")
+            continue
+
+        all_term_exp = np.asarray(all_term_exp, dtype=float)
+        final_E = np.asarray(final_E, dtype=float)
+
+        if all_term_exp.ndim != 3:
+            raise ValueError(
+                f"Expected all_term_expectations to have shape (trials, snapshots, nterms), "
+                f"but got shape {all_term_exp.shape}"
+            )
+
+        n_trials, n_available_snapshots, n_terms = all_term_exp.shape
+        steps_for_h = steps[:n_available_snapshots]
+
+        print(f"all_term_expectations shape for h={h}: {all_term_exp.shape}")
+
+        # Group term indices by family, dropping any term whose coefficient
+        # is 0 for this h (e.g. the field terms when h=0 -- they have no
+        # effect on the energy at that h, so they're not worth plotting).
+        family_indices = {}
+        for term_idx, (label, family) in enumerate(term_labels):
+            coeff = term_coeffs[term_idx] if term_coeffs is not None else None
+            if coeff is not None and coeff == 0:
+                continue
+            family_indices.setdefault(family, []).append(term_idx)
+
+        norm = mcolors.Normalize(vmin=np.nanmin(final_E), vmax=np.nanmax(final_E))
+        cmap = plt.cm.viridis
+
+        for family, idxs in family_indices.items():
+            family_mean = all_term_exp[:, :, idxs].mean(axis=2)  # (trials, snapshots)
+
+            print(f"family={family} for h={h}: {len(idxs)} terms, "
+                  f"mean min/max: {np.nanmin(family_mean)}, {np.nanmax(family_mean)}")
+
+            fig, ax = plt.subplots(figsize=(5, 4))
+            for trial_idx in range(n_trials):
+                ax.plot(
+                    steps_for_h,
+                    family_mean[trial_idx],
+                    color=cmap(norm(final_E[trial_idx])),
+                    alpha=0.8,
+                    linewidth=1,
+                )
+
+            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+            sm.set_array([])
+            fig.colorbar(sm, ax=ax, label="final energy")
+
+            ax.set_xlabel("Training steps")
+            ax.set_ylabel(rf"mean $\langle O_{{\mathrm{{{family}}}}} \rangle$")
+            ax.set_title(f"{family.capitalize()} terms, h={h}, {Lx}x{Ly}, nlayers:{nlayers}")
+            ax.grid(visible=True, which='both', linestyle='--')
+            fig.tight_layout()
+
+            fname = os.path.join(outdir, f"term_expectations_{family}_h_{h}.png")
+            fig.savefig(fname, dpi=200)
+            plt.close(fig)
+            print(f"Saved by-family term-expectation plot to: {fname}")
+
+
+def plotting_term_expectations_individual(results, trial_idx, h=None, label_suffix=""):
+    """
+    Plot every individual Hamiltonian term's expectation value over training,
+    for a single trial, colour-coded by family (star / plaquette / field).
+
+    Drill-down companion to plotting_term_expectations_by_family: use this to
+    inspect one specific trial (e.g. a trial that landed on the wrong energy)
+    in full detail.
+    """
+    os.makedirs(outdir, exist_ok=True)
+    family_colours = {"star": "tab:blue", "plaquette": "tab:red", "field": "tab:green"}
+
+    for h_val in ([h] if h is not None else h_list):
+        all_term_exp = results[h_val].get("all_term_expectations")
+        term_labels = results[h_val].get("term_labels")
+        term_coeffs = results[h_val].get("term_coeffs")
+
+        if all_term_exp is None or term_labels is None:
+            print(f"No term-expectation history found for h={h_val}; skipping individual-term plot.")
+            continue
+
+        all_term_exp = np.asarray(all_term_exp, dtype=float)
+        n_trials, n_available_snapshots, n_terms = all_term_exp.shape
+        steps_for_h = steps[:n_available_snapshots]
+
+        if trial_idx >= n_trials:
+            print(f"trial_idx={trial_idx} out of range (only {n_trials} trials) for h={h_val}; skipping.")
+            continue
+
+        plt.figure(figsize=(5, 4))
+        families_seen = []
+        for term_idx, (label, family) in enumerate(term_labels):
+            coeff = term_coeffs[term_idx] if term_coeffs is not None else None
+            if coeff is not None and coeff == 0:
+                continue
+            colour = family_colours.get(family, "tab:gray")
+            plt.plot(
+                steps_for_h,
+                all_term_exp[trial_idx, :, term_idx],
+                color=colour,
+                alpha=0.6,
+                linewidth=1,
+            )
+            if family not in families_seen:
+                families_seen.append(family)
+
+        legend_handles = [
+            plt.Line2D([0], [0], color=family_colours.get(fam, "tab:gray"), label=fam)
+            for fam in families_seen
+        ]
+        plt.legend(handles=legend_handles)
+
+        plt.xlabel("Training steps")
+        plt.ylabel(r"$\langle O_{\mathrm{term}} \rangle$")
+        plt.title(f"Per-term expectations, trial {trial_idx + 1}{label_suffix}, h={h_val}, {Lx}x{Ly}, nlayers:{nlayers}")
+        plt.tight_layout()
+        plt.grid(visible=True, which='both', linestyle='--')
+
+        fname = os.path.join(outdir, f"term_expectations_individual_trial{trial_idx + 1}_h_{h_val}.png")
+        plt.savefig(fname, dpi=200)
+        plt.close()
+        print(f"Saved individual-trial term-expectation plot to: {fname}")
+
+
+def plotting_term_expectations_best_worst(results):
+    """
+    Convenience wrapper: auto-generate the individual-term drill-down plot
+    for the best (lowest) and worst (highest) final-energy trial at each h.
+    """
+    for h in h_list:
+        final_E = results[h].get("final_E")
+        if final_E is None:
+            continue
+        final_E = np.asarray(final_E, dtype=float)
+        best_idx = int(np.nanargmin(final_E))
+        worst_idx = int(np.nanargmax(final_E))
+        plotting_term_expectations_individual(results, best_idx, h=h, label_suffix=" (best)")
+        if worst_idx != best_idx:
+            plotting_term_expectations_individual(results, worst_idx, h=h, label_suffix=" (worst)")
+
+
 # ---------------------------------------------------------------------------------------------------------------------
-# Global simulation parameters 
+# Global simulation parameters
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
+Lx = 4
 Ly = 3
 nlayers = 2
 howoften_tosave = 10
-trials = 100
-maxiter = 100000
+trials = 5
+maxiter = 1500
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -572,14 +815,23 @@ use_reset_capable_ansatz = True
 # on/off control: None (or []) means no resets at all, using the exact
 # same ansatz structure as when resets are active.
 # Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = []
+reset_layers = [1]
 
 track_grads = True
 track_params = True
+track_term_expectations = False
+# Per-term expectation tracking is far more expensive than the energy/gradient
+# path (one full circuit contraction per Hamiltonian term, not shared like the
+# combined sparse Hamiltonian), so trials are processed in batches to bound
+# peak memory rather than vmapping over all trials at once. Lower this if you
+# still hit out-of-memory errors; set to None to disable batching entirely.
+term_expectations_batch_size = 10
 
 plot_final_energies = True
-save_final_energies = True
+save_final_energies = False
 save_training_history = False
+save_term_expectations = False
+plot_term_expectations = False
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -636,14 +888,22 @@ if __name__ == "__main__":
         plotting_gradient_norms(results)
     if track_params:
         plotting_thetas(results)
-    
-    if plot_final_energies:  
+
+    if plot_final_energies:
         plotting_final_energies(results)
-        
+
     if save_final_energies:
         final_energies_csv_path = os.path.join(outdir, "final_energies_by_trial.csv")
         save_final_energies_csv(results, final_energies_csv_path)
-    
+
     if save_training_history:
         training_history_csv_path = os.path.join(outdir, "training_history.csv")
         save_training_history_csv(results, training_history_csv_path)
+
+    if save_term_expectations:
+        term_expectations_csv_path = os.path.join(outdir, "term_expectations.csv")
+        save_term_expectations_csv(results, term_expectations_csv_path)
+
+    if plot_term_expectations:
+        plotting_term_expectations_by_family(results)
+        plotting_term_expectations_best_worst(results)

@@ -7,7 +7,7 @@
 """Concrete ansatz classes inheriting from VariationalAnsatz."""
 
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import numpy as np
 import jax
 from jax import numpy as jnp
@@ -163,7 +163,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 key_reset,
                 shape=[self.trials, n_reset],
                 minval=0.0,
-                maxval=0.3
+                maxval=jnp.pi/2.0
             )
 
             # reset parameters sit between the two-qubit block and the final
@@ -216,8 +216,19 @@ class ToricCodeAnsatz(VariationalAnsatz):
         for i in range(t.num_qubits):
             ops = ((tc.gates.z(), [i]),)
             terms.append((ops, -self.h))
-        
+
         return terms
+
+    def term_labels(self) -> List[Tuple[str, str]]:
+        """
+        Return (label, family) for each term in `_hamiltonian_terms()`, in the
+        same order. Family is one of "star", "plaquette", "field".
+        """
+        t = self.lattice
+        labels = [(f"star_x{i}_y{j}", "star") for i in range(self.Lx) for j in range(self.Ly)]
+        labels += [(f"plaquette_x{i}_y{j}", "plaquette") for i in range(self.Lx - 1) for j in range(self.Ly - 1)]
+        labels += [(f"field_q{q}", "field") for q in range(t.num_qubits)]
+        return labels
 
 @dataclass
 class OneDBrickwork(VariationalAnsatz):

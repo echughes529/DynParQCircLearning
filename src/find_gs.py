@@ -78,6 +78,43 @@ def _make_jit_helpers(ansatz: Any) -> Tuple[Callable, Callable]:
     
     return costs_vmapped, cost_vvag
 
+def _make_term_expectations_jit(ansatz: Any) -> Callable:
+    """
+    Vmapped+jit function: batch of trial params -> (trials, nterms) array of
+    unweighted per-term expectation values <O_term>.
+
+    Mirrors `_make_jit_helpers` - captures `ansatz` and the (params-independent)
+    term list once outside the jitted closure to avoid recompilation.
+    """
+    terms = ansatz._hamiltonian_terms()
+
+    def term_expectations(params):
+        qc = ansatz._circuit(params)
+        return jnp.stack([K.real(qc.expectation(*ops)) for ops, _coeff in terms])
+
+    return K.jit(K.vmap(term_expectations, vectorized_argnums=0))
+
+def _batched_term_expectations(term_exp_fn: Callable, params: Any, batch_size: Optional[int]) -> np.ndarray:
+    """
+    Call a vmapped term-expectation function in chunks of `batch_size` trials
+    instead of all trials at once, to bound peak memory.
+
+    term_exp_fn vmaps a full forward+conjugate-backward circuit contraction
+    PER Hamiltonian term (there's no shared computation across terms the way
+    the combined sparse Hamiltonian has) - for n_terms terms this is roughly
+    n_terms times the work of the main energy path, and vmapping that over
+    every trial at once can exceed GPU memory well before the (much cheaper)
+    energy/gradient computation does. batch_size=None disables chunking.
+    """
+    n_trials = params.shape[0]
+    if batch_size is None or batch_size >= n_trials:
+        return np.asarray(term_exp_fn(params))
+    chunks = [
+        np.asarray(term_exp_fn(params[start:start + batch_size]))
+        for start in range(0, n_trials, batch_size)
+    ]
+    return np.concatenate(chunks, axis=0)
+
 HamiltonianTerm = Tuple[Tuple[Any, List[int]], float]
 
 @dataclass(eq=False)
@@ -217,7 +254,8 @@ class VariationalAnsatz(abc.ABC):
         rho = qu.reduced_density_matrix(s, cut=list(cut))
         return K.exp(-qu.renyi_entropy(rho, 2))
 
-    def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False):
+    def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False,
+                 track_term_expectations: bool = False, term_expectations_batch_size: Optional[int] = 10):
         """
         Run optimization to find ground state.
 
@@ -227,6 +265,16 @@ class VariationalAnsatz(abc.ABC):
             If True, automatically save results after optimization completes
         track_purity : bool
             If True, track purity during optimization
+        track_term_expectations : bool
+            If True, record the unweighted expectation value <O_term> of every individual
+            Hamiltonian term (from `_hamiltonian_terms()`) at the same cadence as the energy
+            snapshots (every `howoften_tosave` steps). This is far more expensive than the
+            main energy path (one full contraction per term, not shared like the combined
+            sparse Hamiltonian), so trials are processed in batches of
+            `term_expectations_batch_size` to bound peak memory - set to None to vmap over
+            all trials at once (fastest, but can exceed GPU memory at scale).
+        term_expectations_batch_size : Optional[int]
+            Number of trials processed per batch when track_term_expectations is True.
 
         Returns:
         --------
@@ -238,6 +286,13 @@ class VariationalAnsatz(abc.ABC):
         self.allenergies = np.zeros((self.trials, nsnapshots))
         self.allparams = np.zeros((self.trials, nsnapshots, self.nparams))
         self.allgrads = np.zeros((self.trials, nsnapshots, self.nparams))
+
+        if track_term_expectations:
+            term_exp_fn = _make_term_expectations_jit(self)
+            nterms = len(self._hamiltonian_terms())
+            self.all_term_expectations = np.zeros((self.trials, nsnapshots, nterms))
+        else:
+            self.all_term_expectations = None
 
         if getattr(self, "use_reset_capable_ansatz", False):
             self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan) # trials x nsnapshots array initialised with null vector values
@@ -260,21 +315,33 @@ class VariationalAnsatz(abc.ABC):
                     value, gradient = self._cost_vvag(params, seeds)
                 else:
                     value, gradient = self._cost_vvag(params)
-                
+
+                pre_update_params = params
+
                 updates, opt_state = optimizer.update(gradient, opt_state)
                 params = optax.apply_updates(params, updates)
-                
+
                 if i % self.howoften_tosave == 0:
                     self.allenergies[:, counter] = value
 
                     if track_purity:
                         self.allpurities[:, counter] = purity_vec(self, params)
-                    
+
                     if track_params:
                         self.allparams[:, counter, :] = params
-                        
+
                     if track_grads:
                         self.allgrads[:, counter, :] = gradient
+
+                    if track_term_expectations:
+                        # Evaluated at pre_update_params (not the post-update
+                        # `params` above) so this stays snapshot-aligned with
+                        # `value`, which was also computed pre-update. Batched
+                        # across trials (see _batched_term_expectations) since
+                        # this is much more memory-hungry than the energy path.
+                        self.all_term_expectations[:, counter, :] = _batched_term_expectations(
+                            term_exp_fn, pre_update_params, term_expectations_batch_size
+                        )
 
                     counter += 1
                     pbar.set_postfix_str(f"Current value: {str(jnp.min(value))}")
@@ -283,7 +350,7 @@ class VariationalAnsatz(abc.ABC):
         if save_results:
             self.save_results(value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads)
 
-        return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads
+        return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_term_expectations
 
     def save_results(self, final_energies, final_parameters, all_energies, all_purities, all_params, all_grads,
                      save_individual: bool = True):
