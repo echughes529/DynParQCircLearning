@@ -124,14 +124,26 @@ class ToricCodeAnsatz(VariationalAnsatz):
         return self.__dict__ == other.__dict__
 
     def get_full_hamiltonian(self):
-        """Build the full sparse Hamiltonian for toric code."""
+        """
+        Build the full sparse Hamiltonian for toric code.
+
+        `numpy=True` makes tensorcircuit build+dedup each Pauli term one at a
+        time on GPU and accumulate the sum on host (scipy), instead of
+        vmap-batching all terms and reducing them together - the latter needs
+        a `(nterms, 2**nqubits)` boolean dedup mask live on GPU at once, which
+        is what OOMs a 46GB A40 for this lattice size (35 terms x 2^29 rows).
+        The one-time construction cost moves to host RAM (492GB here), then
+        the finished sparse matrix is copied back to a GPU-resident BCOO for
+        training - no change to training-time performance.
+        """
         strings, weights = self.lattice.hamiltonian_tc(1 - self.h, self.nancillas)
         perturbed_strings, perturbed_weights = self.lattice.hamiltonian_tc_perturbation(
             self.h, self.nancillas
         )
         strings.extend(perturbed_strings)
         weights = np.concatenate((weights, perturbed_weights))
-        return qu.PauliStringSum2COO(strings, weights)
+        scipy_coo = qu.PauliStringSum2COO(strings, weights, numpy=True)
+        return tc.backend.coo_sparse_matrix_from_numpy(scipy_coo)
         
     def _initialise_parameters(self):
         """Initialize parameters with optional small angle range."""

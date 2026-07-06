@@ -198,7 +198,7 @@ def save_term_expectations_csv(results, csv_path):
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_reset_capable_ansatz=False,
-                   reset_layers=None,
+                   reset_layers=None, trial_batch_size=None,
                    ):
 
     if nlayers_current is None:
@@ -223,6 +223,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             number_of_shots=number_of_shots,
             use_reset_capable_ansatz=use_reset_capable_ansatz,
             reset_layers=reset_layers,
+            trial_batch_size=trial_batch_size,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_term_expectations = ansatz.optimize(
@@ -802,7 +803,7 @@ Ly = 3
 nlayers = 2
 howoften_tosave = 10
 trials = 5
-maxiter = 1500
+maxiter = 500
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -810,6 +811,16 @@ perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500
 use_reset_capable_ansatz = True
+
+# Bounds how many trials get vmapped together per training step (the main
+# energy/gradient path, not term-expectation tracking below). Each trial
+# needs a full dense state vector live at once, so vmapping all `trials`
+# together needs trials * 2**nqubits amplitudes simultaneously - this is
+# the main lever for fitting bigger lattices onto smaller-VRAM GPUs (e.g.
+# A40 instead of H200). Lower this if you hit out-of-memory errors during
+# training specifically (not Hamiltonian construction); set to None to vmap
+# all trials at once (fastest, highest peak memory).
+trial_batch_size = 1
 
 # Choose which ansatz layers get probabilistic resets. This is the sole
 # on/off control: None (or []) means no resets at all, using the exact
@@ -860,7 +871,7 @@ if __name__ == "__main__":
     print(f"Lx={Lx}, Ly={Ly}")
     print(f"nlayers={nlayers}")
     print(f"howoften_toreset={howoften_toreset}")
-    print(f"trials={trials}, maxiter={maxiter}")
+    print(f"trials={trials}, maxiter={maxiter}, trial_batch_size={trial_batch_size}")
     print(f"outdir={outdir}")
     print(f"reset_layers={reset_layers}")
     print("=================================")
@@ -878,6 +889,7 @@ if __name__ == "__main__":
                              number_of_shots=number_of_shots,
                              use_reset_capable_ansatz=use_reset_capable_ansatz,
                              reset_layers=reset_layers,
+                             trial_batch_size=trial_batch_size,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain

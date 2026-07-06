@@ -49,34 +49,92 @@ import optax
 from src.utilities.generate_ansatz import *
 from src.utilities.result_saver import ResultSaver
 
-def _make_jit_helpers(ansatz: Any) -> Tuple[Callable, Callable]:
+def _chunked_call(fn: Callable, n_trials: int, batch_size: Optional[int], *batched_args: Any) -> Any:
     """
-    Create JIT helpers for a class implementing `energy_from_params`:
+    Call `fn(*batched_args)` in chunks along axis 0, concatenating results back
+    together - trades step time for peak memory by never materialising more
+    than `batch_size` trials' worth of activations at once. `batch_size=None`
+    (or >= n_trials) disables chunking and calls `fn` on everything at once.
+
+    Works uniformly whether `fn` returns a single array (costs_vmapped) or a
+    tuple (cost_vvag's `(value, grad)`), since that's the only difference
+    between the two call sites in `_make_jit_helpers`.
+    """
+    if batch_size is None or batch_size >= n_trials:
+        return fn(*batched_args)
+
+    chunk_results = [
+        fn(*(arg[start:start + batch_size] for arg in batched_args))
+        for start in range(0, n_trials, batch_size)
+    ]
+    if isinstance(chunk_results[0], tuple):
+        return tuple(jnp.concatenate(parts, axis=0) for parts in zip(*chunk_results))
+    return jnp.concatenate(chunk_results, axis=0)
+
+def _make_jit_helpers(ansatz: Any, trial_batch_size: Optional[int] = None) -> Tuple[Callable, Callable]:
+    """
+    Create JIT helpers for a class implementing `energy_given_ham`:
 
     * costs_vmapped  - vectorised (batched) energy evaluation over params
     * cost_vvag      - vectorised value & gradient for parameter batches
-    
+
     This function captures necessary data from ansatz without passing the entire
     object to JIT, preventing recompilation on every call.
+
+    `fullham` is deliberately threaded through as an explicit, non-vectorized
+    argument to the traced functions (in_axes=None under vmap) instead of being
+    read from `ansatz.fullham` inside them. A value only reached via closure is
+    invisible to jit/vmap tracing and gets baked into the compiled program as a
+    literal constant, once per vmap trial - for a multi-GB sparse Hamiltonian
+    that blows up compiled-program size (see
+    notes/jax_vmap_sparse_oom_explained.md). Passing it as a real argument keeps
+    it a single shared buffer referenced by the compiled program instead.
+
+    `trial_batch_size` (see `_chunked_call`) additionally bounds how many
+    trials are vmapped together per call - `energy_from_params` materialises a
+    full dense state vector per trial, so vmapping all `trials` at once needs
+    `trials * 2**nqubits` complex amplitudes live simultaneously. Chunking
+    trades step time for peak memory the same way `_batched_term_expectations`
+    already does for term-expectation tracking.
     """
-    energy_fn = ansatz.energy_from_params
+    fullham = ansatz.fullham
     perform_noisy_simulations = getattr(ansatz, "perform_noisy_simulations", False)
-    
+    trials = ansatz.trials
+
     if perform_noisy_simulations:
         # For noisy simulations, we need to handle seeds
-        def energy_with_seed(params, seed):
-            return energy_fn(params, seed=seed)
-        
+        def energy_with_seed(params, seed, fullham):
+            return ansatz.energy_given_ham(params, fullham, seed=seed)
+
         costs_vmapped = K.jit(K.vmap(energy_with_seed, vectorized_argnums=[0, 1]))
         cost_vvag = K.jit(K.vmap(K.value_and_grad(energy_with_seed, argnums=0),
                                  vectorized_argnums=[0, 1]))
+
+        def costs_vmapped_wrapped(params, seed):
+            return _chunked_call(lambda p, s: costs_vmapped(p, s, fullham),
+                                  trials, trial_batch_size, params, seed)
+
+        def cost_vvag_wrapped(params, seed):
+            return _chunked_call(lambda p, s: cost_vvag(p, s, fullham),
+                                  trials, trial_batch_size, params, seed)
     else:
         # For noiseless simulations
+        def energy_fn(params, fullham):
+            return ansatz.energy_given_ham(params, fullham)
+
         costs_vmapped = K.jit(K.vmap(energy_fn, vectorized_argnums=0))
         cost_vvag = K.jit(K.vmap(K.value_and_grad(energy_fn, argnums=0),
                                  vectorized_argnums=0))
-    
-    return costs_vmapped, cost_vvag
+
+        def costs_vmapped_wrapped(params):
+            return _chunked_call(lambda p: costs_vmapped(p, fullham),
+                                  trials, trial_batch_size, params)
+
+        def cost_vvag_wrapped(params):
+            return _chunked_call(lambda p: cost_vvag(p, fullham),
+                                  trials, trial_batch_size, params)
+
+    return costs_vmapped_wrapped, cost_vvag_wrapped
 
 def _make_term_expectations_jit(ansatz: Any) -> Callable:
     """
@@ -144,6 +202,14 @@ class VariationalAnsatz(abc.ABC):
     noise_rate: float = 1e-2
     number_of_shots: int = 1000
 
+    # Number of trials to vmap together per training step (_cost_vvag /
+    # _costs_vmapped). Each trial needs a full dense state vector live at
+    # once, so vmapping all `trials` together needs trials * 2**nqubits
+    # amplitudes simultaneously - lower this to bound peak GPU memory at the
+    # cost of step time (more, smaller jit calls instead of one big one).
+    # None (default) vmaps all trials at once - fastest, highest peak memory.
+    trial_batch_size: Optional[int] = None
+
     # ---- fields that are filled automatically in __post_init__ ----
     nparams: int = field(init=False)          # derived from concrete class
     initparams: Any = field(init=False)       # shape (trials, nparams)
@@ -175,7 +241,7 @@ class VariationalAnsatz(abc.ABC):
             print("Done")
         
         self.initparams = self._initialise_parameters()
-        self._costs_vmapped, self._cost_vvag = _make_jit_helpers(self)
+        self._costs_vmapped, self._cost_vvag = _make_jit_helpers(self, self.trial_batch_size)
 
     def _initialise_parameters(self):
         """Initialize random parameters for all trials."""
@@ -185,7 +251,17 @@ class VariationalAnsatz(abc.ABC):
                                  minval=0, maxval=0)
 
     def energy_from_params(self, params, seed=None) -> Any:
-        """Compute energy for given parameters."""
+        """Compute energy for given parameters (uses self.fullham; not jit/vmap-safe - see energy_given_ham)."""
+        return self.energy_given_ham(params, self.fullham, seed=seed)
+
+    def energy_given_ham(self, params, fullham, seed=None) -> Any:
+        """
+        Compute energy for given parameters against an explicitly-passed Hamiltonian.
+
+        `fullham` must stay a genuine argument (not read from `self.fullham`)
+        wherever this is called from inside jit/vmap - see the note on
+        `_make_jit_helpers` for why.
+        """
         qc = self._circuit(params, seed)
 
         if self.sparse:
@@ -196,7 +272,7 @@ class VariationalAnsatz(abc.ABC):
                     "Set sparse=False to enable noisy simulations.",
                     UserWarning
                 )
-            return K.real(sparse_expectation(qc, self.fullham))
+            return K.real(sparse_expectation(qc, fullham))
         else:
             # Non-sparse: compute expectation values term by term
             terms = self._hamiltonian_terms()

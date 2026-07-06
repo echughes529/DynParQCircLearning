@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=dpqc
 #SBATCH --time=24:00:00
-#SBATCH --mem=64G
+#SBATCH --mem=150G
 #SBATCH --output=/dev/null
 #SBATCH --error=/dev/null
 #SBATCH --partition=ICF-Free
@@ -12,8 +12,8 @@
 #   (a) commenting out the a40 line below and uncommenting the h200 line, or
 #   (b) overriding at submit time without editing this file:
 #       sbatch --gres=gpu:nvidia_h200:1 run_plot_training_curve_tc.sh
-# # SBATCH --gres=gpu:a40:1
-#SBATCH --gres=gpu:nvidia_h200:1
+#SBATCH --gres=gpu:a40:1
+# #SBATCH --gres=gpu:nvidia_h200:1
 
 # --- Move into the repository root explicitly ---
 mkdir -p /home/s1931382/DynParQCircLearning/logs
