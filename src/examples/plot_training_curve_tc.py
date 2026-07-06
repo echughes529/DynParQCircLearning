@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 from src.utilities.generate_toric_code_hamiltonian import ToricCode
 from src.utilities.ansatz_classes import ToricCodeAnsatz
+from src.utilities.generate_ansatz import get_singular_values_per_cut
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -133,8 +134,8 @@ def save_final_energies_csv(results, csv_path):
 
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
-                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets=False,
-                   reset_layers=None, use_mps=True, bond_dim=2,
+                   unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets_ansatz=False,
+                   reset_layers=None, use_mps=True, bond_dim=2, use_optimal_ordering=True,
                    ):
 
     if nlayers_current is None:
@@ -157,10 +158,11 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             perform_noisy_simulations=perform_noisy_simulations,
             noise_rate=noise_rate,
             number_of_shots=number_of_shots,
-            use_prob_resets=use_prob_resets,
+            use_prob_resets_ansatz=use_prob_resets_ansatz,
             reset_layers=reset_layers,
             use_mps=use_mps,
             bond_dim=bond_dim,
+            use_optimal_ordering=use_optimal_ordering,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims = ansatz.optimize(
@@ -169,8 +171,49 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             track_bond_dim=track_bond_dim,
         )
         reset_layers_used = None
-        if use_prob_resets and hasattr(ansatz, "active_reset_layers"):
+        if use_prob_resets_ansatz and hasattr(ansatz, "active_reset_layers"):
             reset_layers_used = list(ansatz.active_reset_layers)
+
+        singular_values_mean_per_cut = None
+        singular_values_std_per_cut = None
+        n_sv_trials_used = None
+        if track_singular_values and use_mps:
+            final_E_density = np.asarray(final_E, dtype=float) / n_qubits
+            reference_energy_density = get_reference_energy_density(Lx, Ly)
+
+            converged_trial_indices = []
+            if reference_energy_density is not None:
+                relative_error = np.abs(
+                    (final_E_density - reference_energy_density) / reference_energy_density
+                )
+                converged_trial_indices = np.where(relative_error <= 0.001)[0].tolist()
+
+            if converged_trial_indices:
+                selected_trial_indices = converged_trial_indices
+            else:
+                if reference_energy_density is None:
+                    print(f"No reference energy density defined for Lx={Lx}, Ly={Ly}; "
+                          f"falling back to first {singular_value_ntrials} trials for singular-value averaging.")
+                else:
+                    print(f"h={h}: 0/{trials} trials converged within 0.1% of reference energy density "
+                          f"({reference_energy_density}); falling back to first {singular_value_ntrials} trials for singular-value averaging.")
+                selected_trial_indices = list(range(min(singular_value_ntrials, trials)))
+
+            n_sv_trials_used = len(selected_trial_indices)
+            per_trial_spectra = [
+                get_singular_values_per_cut(ansatz._circuit(final_purity[trial_idx]))
+                for trial_idx in selected_trial_indices
+            ]  # list[trial] of list[cut] of array(bond_dim_at_cut,)
+
+            n_cuts = len(per_trial_spectra[0])
+            singular_values_mean_per_cut = [
+                np.mean([per_trial_spectra[t][cut] for t in range(n_sv_trials_used)], axis=0)
+                for cut in range(n_cuts)
+            ]
+            singular_values_std_per_cut = [
+                np.std([per_trial_spectra[t][cut] for t in range(n_sv_trials_used)], axis=0)
+                for cut in range(n_cuts)
+            ]
 
         results[h] = {
             "final_E": final_E,
@@ -182,6 +225,10 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             "all_bond_dims": all_bond_dims,
             "reset_layers_used": reset_layers_used,
             "reset_layers_input": reset_layers,
+            "use_prob_resets_ansatz": use_prob_resets_ansatz,
+            "singular_values_mean_per_cut": singular_values_mean_per_cut,
+            "singular_values_std_per_cut": singular_values_std_per_cut,
+            "singular_value_ntrials_used": n_sv_trials_used,
         }
 
     return results
@@ -215,7 +262,7 @@ def plotting(results):
         
         plt.xlabel("Training steps")
         plt.ylabel("E/n")
-        plt.title(f"{Lx}x{Ly}, nlayers:{nlayers}, trials: {trials}, resets: {use_prob_resets}")
+        plt.title(f"{Lx}x{Ly}, nlayers:{nlayers}, trials: {trials}, resets: {use_prob_resets_ansatz}")
         plt.legend()
         plt.tight_layout()
         plt.grid(visible=True, which='both', linestyle='--')
@@ -229,7 +276,7 @@ def plotting(results):
                 plt.axhline(y=-13/12, color = "tab:orange", linestyle = '--') # for 3x3
         
         # ------------------------------------------------------------------------------------------------------------
-        fname = os.path.join(outdir, f"{Lx}x{Ly}_nlayers_{nlayers}_resets_{use_prob_resets}.png") 
+        fname = os.path.join(outdir, f"{Lx}x{Ly}_nlayers_{nlayers}_resets_{use_prob_resets_ansatz}.png") 
         # ------------------------------------------------------------------------------------------------------------
         
         plt.savefig(fname, dpi=200)
@@ -314,17 +361,24 @@ def plotting_thetas(results):
     reset_layers_used = results[h].get("reset_layers_used")
     reset_layers_input = results[h].get("reset_layers_input")
 
-    if reset_layers_used is None:
+    if not results[h].get("use_prob_resets_ansatz", False):
+        active_reset_layers = []
+    elif reset_layers_used is None:
         active_reset_layers = list(range(nlayers))
     else:
         active_reset_layers = list(reset_layers_used)
+
+    n_reset_thetas = n_resets_per_layer * len(active_reset_layers)
+
+    if n_reset_thetas == 0:
+        print("No reset-theta parameters for this run (use_prob_resets_ansatz=False or "
+              "reset_layers=[]); skipping theta plot.")
+        return
 
     if reset_layers_input is None:
         reset_layers_label = f"all layers {active_reset_layers}"
     else:
         reset_layers_label = str(active_reset_layers)
-
-    n_reset_thetas = n_resets_per_layer * len(active_reset_layers)
 
     print(f"reset_layers input: {reset_layers_input}")
     print(f"reset_layers used: {active_reset_layers}")
@@ -377,6 +431,21 @@ def plotting_thetas(results):
 
 
 # ------------------------------------------------------------------------------------------------------------
+# Reference ground-state energy density per lattice size
+# ------------------------------------------------------------------------------------------------------------
+def get_reference_energy_density(Lx, Ly):
+    """Hardcoded reference ground-state energy density for supported lattice sizes, else None."""
+    if Lx == 2 and Ly == 2:
+        return -5/4  # for 2x2
+    if Lx == 3:
+        if Ly == 2:
+            return -8/7  # for 3x2
+        if Ly == 3:
+            return -13/12  # for 3x3
+    return None
+
+
+# ------------------------------------------------------------------------------------------------------------
 # Plotting final energies per trial
 # ------------------------------------------------------------------------------------------------------------
 def plotting_final_energies(results):
@@ -394,15 +463,7 @@ def plotting_final_energies(results):
         plt.figure(figsize=(5, 4))
         plt.plot(trial_numbers, final_E_density, marker="o", linestyle="None")
 
-        reference_energy_density = None
-
-        if Lx == 2 and Ly == 2:
-            reference_energy_density = -5/4  # for 2x2
-        if Lx == 3:
-            if Ly == 2:
-                reference_energy_density = -8/7  # for 3x2
-            if Ly == 3:
-                reference_energy_density = -13/12  # for 3x3
+        reference_energy_density = get_reference_energy_density(Lx, Ly)
 
         if reference_energy_density is not None:
             plt.axhline(y=reference_energy_density, linestyle="--")
@@ -510,6 +571,29 @@ def plotting_bond_dims(results):
         print(f"Saved max bond-dimension plot to: {fname}")
 
 
+def print_singular_value_table(results):
+    """
+    Print, per h, a table of the singular-value spectrum at every bond of the
+    final trained circuit: cut index, bond dimension, and singular values as
+    mean +/- std across the trials used.
+    """
+    for h in h_list:
+        sv_mean = results[h].get("singular_values_mean_per_cut")
+        sv_std = results[h].get("singular_values_std_per_cut")
+        n_trials_used = results[h].get("singular_value_ntrials_used")
+        if sv_mean is None:
+            print(f"No singular-value data found for h={h}; skipping.")
+            continue
+
+        print(f"\nSingular value spectrum per bond (h={h}, mean +/- std over {n_trials_used} trials):")
+        header = f"{'cut':>5} | {'bond dim':>8} | singular values (mean +/- std)"
+        print(header)
+        print("-" * len(header))
+        for cut_idx, (means, stds) in enumerate(zip(sv_mean, sv_std)):
+            sv_str = ", ".join(f"{m:.4g}+/-{s:.1g}" for m, s in zip(means, stds))
+            print(f"{cut_idx:>5} | {len(means):>8} | {sv_str}")
+
+
 # ------------------------------------------------------------------------------------------------------------
 # Plot gradient norms over training
 # ------------------------------------------------------------------------------------------------------------
@@ -587,30 +671,36 @@ def plotting_gradient_norms(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 2
-Ly = 2
+Lx = 3
+Ly = 3
 nlayers = 2
 howoften_tosave = 10
-trials = 10
-maxiter = 700
+trials = 20
+maxiter = 1000
 howoften_toreset = 7
 unitary = True
 sparse = False
 perform_noisy_simulations = False
 noise_rate = 5e-2
 number_of_shots = 500 
-use_prob_resets = True
+use_prob_resets_ansatz = True
 use_mps = True
 bond_dim = 32
+use_optimal_ordering = False
 
 # Choose which ansatz layers get probabilistic resets.
 # Use None to apply resets on every layer, preserving the old behaviour.
 # Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = [1]
+reset_layers = []
 
 track_grads = True
 track_params = True
 track_bond_dim = True
+track_singular_values = True
+# Preferred: average singular values over all trials converged within 0.1% of
+# the reference energy density. This is only the fallback trial count, used
+# when no reference is defined for (Lx, Ly) or zero trials converge.
+singular_value_ntrials = 5
 
 plot_final_energies = True
 save_final_energies = True
@@ -660,10 +750,11 @@ if __name__ == "__main__":
                              sparse=sparse, 
                              perform_noisy_simulations=perform_noisy_simulations,
                              number_of_shots=number_of_shots,
-                             use_prob_resets=use_prob_resets,
+                             use_prob_resets_ansatz=use_prob_resets_ansatz,
                              reset_layers=reset_layers,
                              use_mps=use_mps,
                              bond_dim=bond_dim,
+                             use_optimal_ordering=use_optimal_ordering,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain
@@ -688,3 +779,6 @@ if __name__ == "__main__":
 
     if track_bond_dim:
         plotting_bond_dims(results)
+
+    if track_singular_values:
+        print_singular_value_table(results)

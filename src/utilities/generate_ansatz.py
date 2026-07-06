@@ -398,6 +398,19 @@ def make_split_conf(bond_dim=32):
 
 split_conf = make_split_conf(bond_dim=32)
 
+def get_singular_values_per_cut(qc):
+    """Singular-value spectrum at every bond of a canonicalized MPS circuit."""
+    n_sites = len(qc.get_tensors())
+    singular_values = []
+    for site in range(n_sites - 1):
+        qc.position(site)  # move orthogonality center so the cut is exact
+        tensor = np.asarray(qc.get_tensors()[site])
+        d_left, d_phys, d_right = tensor.shape
+        matrix = tensor.reshape(d_left * d_phys, d_right)
+        s = np.linalg.svd(matrix, compute_uv=False)
+        singular_values.append(s)
+    return singular_values
+
 def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
     n_resets = nlayers*(n-1)
     if np.mod(n, 2) != 0:
