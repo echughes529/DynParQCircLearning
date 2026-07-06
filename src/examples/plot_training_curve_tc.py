@@ -798,12 +798,12 @@ def plotting_term_expectations_best_worst(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 4
+Lx = 3
 Ly = 3
 nlayers = 2
 howoften_tosave = 10
-trials = 5
-maxiter = 500
+trials = 100
+maxiter = 2000
 howoften_toreset = 7
 unitary = True
 sparse = True
@@ -820,7 +820,7 @@ use_reset_capable_ansatz = True
 # A40 instead of H200). Lower this if you hit out-of-memory errors during
 # training specifically (not Hamiltonian construction); set to None to vmap
 # all trials at once (fastest, highest peak memory).
-trial_batch_size = 1
+trial_batch_size = None
 
 # Choose which ansatz layers get probabilistic resets. This is the sole
 # on/off control: None (or []) means no resets at all, using the exact
@@ -836,7 +836,7 @@ track_term_expectations = False
 # combined sparse Hamiltonian), so trials are processed in batches to bound
 # peak memory rather than vmapping over all trials at once. Lower this if you
 # still hit out-of-memory errors; set to None to disable batching entirely.
-term_expectations_batch_size = 10
+term_expectations_batch_size = None
 
 plot_final_energies = True
 save_final_energies = False
