@@ -259,6 +259,25 @@ class ToricCodeAnsatz(VariationalAnsatz):
         weights = np.concatenate((weights, perturbed_weights))
         return qu.PauliStringSum2COO(strings, weights)
         
+    @property
+    def reset_param_slice(self):
+        """
+        Slice of the flat parameter vector holding the probabilistic-reset
+        theta parameters, or None if this ansatz has no reset parameters.
+
+        Layout (only valid when use_prob_resets_ansatz is True):
+            [0, n_two_qubit)                        -> Cartan-block params
+            [n_two_qubit, n_two_qubit+total_resets)  -> reset-theta params
+            [n_two_qubit+total_resets, nparams)      -> final single-qubit params
+        """
+        if not getattr(self, "use_prob_resets_ansatz", False):
+            return None
+        total_resets = getattr(self, "total_resets", 0)
+        if not total_resets:
+            return None
+        n_two_qubit = self.nplaquettes * 3 * 9 * self.nlayers
+        return slice(n_two_qubit, n_two_qubit + total_resets)
+
     def _initialise_parameters(self):
         """Initialize parameters with optional small angle range."""
         randint = np.random.randint(1e5)
@@ -282,23 +301,17 @@ class ToricCodeAnsatz(VariationalAnsatz):
         )
 
         # If using probabilistic resets, overwrite the reset parameters
-        # with very small values in [0, 1e-5]
+        # with values in [0, pi/2]
         if self.use_prob_resets_ansatz:
             n_reset = self.total_resets
             reset_vals = jax.random.uniform(
                 key_reset,
                 shape=[self.trials, n_reset],
                 minval=0.0,
-                maxval=1e-5
+                maxval=jnp.pi / 2.0
             )
 
-            # reset parameters sit between the two-qubit block and the final
-            # single-qubit block
-            n_two_qubit = self.nplaquettes * 3 * 9 * self.nlayers
-            reset_start = n_two_qubit
-            reset_end = reset_start + n_reset
-
-            params = params.at[:, reset_start:reset_end].set(reset_vals)
+            params = params.at[:, self.reset_param_slice].set(reset_vals)
 
         return params
 
