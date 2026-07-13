@@ -229,7 +229,8 @@ class VariationalAnsatz(abc.ABC):
         rho = qu.reduced_density_matrix(s, cut=list(cut))
         return K.exp(-qu.renyi_entropy(rho, 2))
 
-    def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False, track_bond_dim: bool = False):
+    def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False, track_bond_dim: bool = False,
+                 track_singular_values_per_step: bool = False, singular_value_trial_idx: int = 0):
         """
         Run optimization to find ground state.
         
@@ -253,6 +254,8 @@ class VariationalAnsatz(abc.ABC):
         self.allparams = np.zeros((self.trials, nsnapshots, self.nparams))
         self.allgrads = np.zeros((self.trials, nsnapshots, self.nparams))
         self.all_bond_dims = np.zeros((self.trials, nsnapshots))
+        self.singular_values_per_step = [None] * nsnapshots if track_singular_values_per_step else None
+        self.reset_thetas_per_step = [None] * nsnapshots if track_singular_values_per_step else None
 
         if getattr(self, "use_prob_resets_ansatz", False):
             self.all_prob_reset_theta_means = np.full((self.trials, nsnapshots), np.nan) # trials x nsnapshots array initialised with null vector values
@@ -297,6 +300,22 @@ class VariationalAnsatz(abc.ABC):
                             bd = np.asarray(qc.get_bond_dimensions())
                             self.all_bond_dims[trial, counter] = np.max(bd)
 
+                    if track_singular_values_per_step:
+                        if not self.use_mps:
+                            if counter == 0:
+                                print("track_singular_values_per_step requested but use_mps=False; skipping (MPS-only diagnostic).")
+                        else:
+                            qc = self._circuit(params[singular_value_trial_idx])
+                            self.singular_values_per_step[counter] = get_singular_values_per_cut(qc)
+
+                            reset_slice = getattr(self, "reset_param_slice", None)
+                            if reset_slice is not None:
+                                reset_thetas = np.asarray(params[singular_value_trial_idx])[reset_slice]
+                                self.reset_thetas_per_step[counter] = reset_thetas
+                                print(f"step {i} (trial {singular_value_trial_idx}): reset thetas = {reset_thetas}")
+                            elif counter == 0:
+                                print(f"step {i}: no reset_param_slice on this ansatz ({type(self).__name__}); skipping reset-theta print.")
+
                     counter += 1
                     pbar.set_postfix_str(f"Current value: {str(jnp.min(value))}")
 
@@ -304,7 +323,7 @@ class VariationalAnsatz(abc.ABC):
         if save_results:
             self.save_results(value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_bond_dims)
 
-        return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_bond_dims
+        return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_bond_dims, self.singular_values_per_step, self.reset_thetas_per_step
 
     def save_results(self, final_energies, final_parameters, all_energies, all_purities, all_params, all_grads, all_bond_dims,
                      save_individual: bool = True):

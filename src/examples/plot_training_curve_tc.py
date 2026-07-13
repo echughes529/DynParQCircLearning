@@ -133,6 +133,67 @@ def save_final_energies_csv(results, csv_path):
     return csv_path
 
 
+# ------------------------------------------------------------------------------------------------------------
+# Save per-step singular values and reset-theta values for the tracked trial to CSV
+# ------------------------------------------------------------------------------------------------------------
+def save_singular_values_csv(results, csv_path):
+    """
+    Save per-step singular-value spectra and reset-theta values for the single
+    tracked trial (see `singular_value_trial_idx`) to CSV.
+
+    One row is written for each `(h, training_step, bond_cut)` triple. The
+    reset thetas at that step (same for every cut, since they're a single
+    snapshot of the trial's parameters) are repeated on every row for that step.
+    """
+    rows = []
+
+    for h in h_list:
+        result_for_h = results[h]
+        sv_per_step = result_for_h.get("singular_values_per_step")
+        reset_thetas_per_step = result_for_h.get("reset_thetas_per_step")
+        trial_idx = result_for_h.get("singular_value_trial_idx_used")
+
+        if sv_per_step is None:
+            print(f"No per-step singular-value data found for h={h}; skipping CSV rows.")
+            continue
+
+        for snapshot_idx, spectra in enumerate(sv_per_step):
+            if spectra is None:
+                continue
+
+            step = steps[snapshot_idx]
+
+            reset_thetas = None
+            if reset_thetas_per_step is not None:
+                reset_thetas = reset_thetas_per_step[snapshot_idx]
+            reset_thetas_str = (
+                ";".join(f"{v:.6g}" for v in reset_thetas) if reset_thetas is not None else ""
+            )
+
+            for cut_idx, sv in enumerate(spectra):
+                rows.append({
+                    "h": h,
+                    "trial": int(trial_idx) if trial_idx is not None else "",
+                    "training_step": int(step),
+                    "reset_thetas": reset_thetas_str,
+                    "bond_cut": cut_idx,
+                    "singular_values": ";".join(f"{v:.6g}" for v in sv),
+                })
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["h", "trial", "training_step", "reset_thetas", "bond_cut", "singular_values"],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Saved per-step singular-value CSV to: {csv_path}")
+    return csv_path
+
+
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets_ansatz=False,
                    reset_layers=None, use_mps=True, bond_dim=2, use_optimal_ordering=True,
@@ -165,10 +226,12 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             use_optimal_ordering=use_optimal_ordering,
         )
 
-        final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims = ansatz.optimize(
+        final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims, sv_per_step, reset_thetas_per_step = ansatz.optimize(
             track_params=track_params,
             track_grads=track_grads,
             track_bond_dim=track_bond_dim,
+            track_singular_values_per_step=track_singular_values_per_step,
+            singular_value_trial_idx=singular_value_trial_idx,
         )
         reset_layers_used = None
         if use_prob_resets_ansatz and hasattr(ansatz, "active_reset_layers"):
@@ -229,6 +292,9 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             "singular_values_mean_per_cut": singular_values_mean_per_cut,
             "singular_values_std_per_cut": singular_values_std_per_cut,
             "singular_value_ntrials_used": n_sv_trials_used,
+            "singular_values_per_step": sv_per_step,
+            "reset_thetas_per_step": reset_thetas_per_step,
+            "singular_value_trial_idx_used": singular_value_trial_idx if track_singular_values_per_step else None,
         }
 
     return results
@@ -594,6 +660,57 @@ def print_singular_value_table(results):
             print(f"{cut_idx:>5} | {len(means):>8} | {sv_str}")
 
 
+def plot_singular_values_per_step(results, threshold=1e-5):
+    """
+    Plot, for each bond cut, the number of singular values above `threshold`
+    for a single tracked trial as it evolves over training. This is a proxy
+    for the "effective" bond dimension the circuit is actually using at each
+    cut, as opposed to the truncation bond_dim ceiling.
+    """
+    os.makedirs(outdir, exist_ok=True)
+
+    for h in h_list:
+        sv_per_step = results[h].get("singular_values_per_step")
+        trial_idx = results[h].get("singular_value_trial_idx_used")
+
+        if sv_per_step is None:
+            print(f"No per-step singular-value data found for h={h}; skipping.")
+            continue
+
+        populated = [(s, spectra) for s, spectra in enumerate(sv_per_step) if spectra is not None]
+        if not populated:
+            print(f"Per-step singular-value tracking was on for h={h}, but no snapshots were populated "
+                  f"(likely use_mps=False); skipping.")
+            continue
+
+        n_cuts = len(populated[0][1])
+        steps_used = [steps[s] for s, _ in populated]
+
+        plt.figure(figsize=(6, 4))
+        for cut_idx in range(n_cuts):
+            n_above_per_step = [int(np.sum(spectra[cut_idx] > threshold)) for _, spectra in populated]
+            plt.plot(
+                steps_used,
+                n_above_per_step,
+                marker="o",
+                markersize=2,
+                label=f"cut {cut_idx}" if n_cuts <= 12 else None,
+            )
+
+        plt.xlabel("Training steps")
+        plt.ylabel(f"# singular values > {threshold:g}")
+        plt.title(f"Per-cut singular values above threshold vs. step, h={h}, trial {trial_idx}")
+        if n_cuts <= 12:
+            plt.legend(fontsize=7)
+        plt.tight_layout()
+        plt.grid(visible=True, which="both", linestyle="--")
+
+        fname = os.path.join(outdir, f"singular_values_per_step_h_{h}_trial_{trial_idx}.png")
+        plt.savefig(fname, dpi=200)
+        plt.close()
+        print(f"Saved per-step singular-value plot to: {fname}")
+
+
 # ------------------------------------------------------------------------------------------------------------
 # Plot gradient norms over training
 # ------------------------------------------------------------------------------------------------------------
@@ -671,12 +788,12 @@ def plotting_gradient_norms(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
-Ly = 3
+Lx = 2
+Ly = 2
 nlayers = 2
 howoften_tosave = 10
-trials = 20
-maxiter = 1000
+trials = 1
+maxiter = 500
 howoften_toreset = 7
 unitary = True
 sparse = False
@@ -691,7 +808,7 @@ use_optimal_ordering = False
 # Choose which ansatz layers get probabilistic resets.
 # Use None to apply resets on every layer, preserving the old behaviour.
 # Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = []
+reset_layers = [1]
 
 track_grads = True
 track_params = True
@@ -702,9 +819,18 @@ track_singular_values = True
 # when no reference is defined for (Lx, Ly) or zero trials converge.
 singular_value_ntrials = 5
 
+# Track the per-cut singular-value spectrum and print reset-theta values for a
+# single trial at every save step during training. Only correct for reset_layers
+# equal to the last layer (see ToricCodeAnsatz.reset_param_slice); set trials=1
+# when using this for a clean, cheap diagnostic run.
+track_singular_values_per_step = True
+singular_value_trial_idx = 0
+singular_value_threshold = 1e-4  # used by plot_singular_values_per_step to count "active" singular values per cut
+
 plot_final_energies = True
-save_final_energies = True
+save_final_energies = False
 save_training_history = False
+save_singular_values_per_step = False
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -782,3 +908,10 @@ if __name__ == "__main__":
 
     if track_singular_values:
         print_singular_value_table(results)
+
+    if track_singular_values_per_step:
+        plot_singular_values_per_step(results, threshold=singular_value_threshold)
+
+    if save_singular_values_per_step:
+        singular_values_csv_path = os.path.join(outdir, "singular_values_per_step.csv")
+        save_singular_values_csv(results, singular_values_csv_path)
