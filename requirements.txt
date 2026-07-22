@@ -9,3 +9,4 @@ tqdm
 h5py
 tensorflow
 matplotlib
+pytest
