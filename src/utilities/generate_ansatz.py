@@ -393,10 +393,31 @@ def test_ansatz(param, n, nlayers, n_resets):
 
     return paramc, c
 
-def make_split_conf(bond_dim=32):
+def make_split_conf(bond_dim=None):
+    """Truncation config for tc.MPSCircuit's split rules.
+
+    Defaults to no truncation at all (empty dict): every singular value is
+    kept exactly at every gate application, so bond dimension grows to
+    whatever the true entanglement requires. Pass bond_dim to impose a hard
+    cap on the number of singular values kept (e.g. to reproduce a prior
+    fixed-bond-dimension run).
+
+    Deliberately not threshold-based (no max_truncation_err/max_truncation_error):
+    that criterion bounds the cumulative Frobenius norm of the *discarded
+    tail* of singular values, not each value individually, so for
+    near-degenerate spectra -- e.g. the toric code's, which is exactly what
+    this codebase targets -- it can discard a run of small-but-similar
+    values whose combined norm exceeds the bound even though none of them
+    individually would fail a per-value cutoff. Keeping everything exactly
+    avoids that failure mode; see src/diagnostics/reset_branches.py for
+    where a post-hoc per-value magnitude threshold is applied instead, only
+    for reporting a bond-dimension count, never for truncating the state.
+    """
+    if bond_dim is None:
+        return {}
     return {"max_singular_values": bond_dim}
 
-split_conf = make_split_conf(bond_dim=32)
+split_conf = make_split_conf()
 
 def get_singular_values_per_cut(qc):
     """Singular-value spectrum at every bond of a canonicalized MPS circuit."""

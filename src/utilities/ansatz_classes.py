@@ -52,7 +52,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
     unitary: bool = False
 
-    bond_dim: int = 2
+    bond_dim: Optional[int] = None
     use_optimal_ordering: bool = True
 
     def __post_init__(self):
@@ -380,7 +380,7 @@ class OneDBrickwork(VariationalAnsatz):
     J : float = 1.0
     unitary : bool = False
     n_ancillas = None
-    bond_dim: int = 2
+    bond_dim: Optional[int] = None
 
     def __post_init__(self):
         import src.utilities.generate_ansatz as _ga
