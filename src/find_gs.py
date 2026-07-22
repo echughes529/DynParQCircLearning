@@ -306,7 +306,14 @@ class VariationalAnsatz(abc.ABC):
                                 print("track_singular_values_per_step requested but use_mps=False; skipping (MPS-only diagnostic).")
                         else:
                             qc = self._circuit(params[singular_value_trial_idx])
-                            self.singular_values_per_step[counter] = get_singular_values_per_cut(qc)
+                            spectra = get_singular_values_per_cut(qc)
+                            self.singular_values_per_step[counter] = spectra
+
+                            spectra_str = " | ".join(
+                                f"cut {cut_idx}: {np.array2string(np.asarray(sv), precision=4)}"
+                                for cut_idx, sv in enumerate(spectra)
+                            )
+                            print(f"step {i} (trial {singular_value_trial_idx}): singular values -- {spectra_str}")
 
                             reset_slice = getattr(self, "reset_param_slice", None)
                             if reset_slice is not None:
