@@ -394,13 +394,25 @@ def test_ansatz(param, n, nlayers, n_resets):
     return paramc, c
 
 def make_split_conf(bond_dim=None):
-    """Truncation config for tc.MPSCircuit's split rules.
+    """Truncation config for tc.MPSCircuit's split rules, used when applying
+    gates during circuit construction.
 
-    Defaults to no truncation at all (empty dict): every singular value is
-    kept exactly at every gate application, so bond dimension grows to
-    whatever the true entanglement requires. Pass bond_dim to impose a hard
-    cap on the number of singular values kept (e.g. to reproduce a prior
-    fixed-bond-dimension run).
+    bond_dim=None returns an empty dict: no cap, every singular value kept
+    exactly. Pass bond_dim to impose a hard cap on the number of singular
+    values kept (e.g. to reproduce a prior fixed-bond-dimension run).
+
+    WARNING: bond_dim=None is not a drop-in "no cap, same as a huge cap"
+    setting. tensorcircuit-ng's split_tensor (mpscircuit.py) branches on
+    `len(split) > 0`: any non-empty split dict takes an SVD-based path
+    (backend.svd); an empty dict takes a QR/RQ-based path instead. These are
+    different decomposition algorithms with different autodiff/gradient
+    behavior, not just "same math, different truncation." Verified
+    empirically: the QR path (bond_dim=None) measurably changed training
+    dynamics (e.g. reset-theta parameters failing to converge to their
+    otherwise-stable value) compared to an explicit large bond_dim (e.g.
+    1000), even though the *forward-pass* bond dimension was identical
+    either way. If you want "no real cap" while keeping the known-good SVD
+    path, pass an explicit large bond_dim rather than None.
 
     Deliberately not threshold-based (no max_truncation_err/max_truncation_error):
     that criterion bounds the cumulative Frobenius norm of the *discarded
@@ -408,10 +420,7 @@ def make_split_conf(bond_dim=None):
     near-degenerate spectra -- e.g. the toric code's, which is exactly what
     this codebase targets -- it can discard a run of small-but-similar
     values whose combined norm exceeds the bound even though none of them
-    individually would fail a per-value cutoff. Keeping everything exactly
-    avoids that failure mode; see src/diagnostics/reset_branches.py for
-    where a post-hoc per-value magnitude threshold is applied instead, only
-    for reporting a bond-dimension count, never for truncating the state.
+    individually would fail a per-value cutoff.
     """
     if bond_dim is None:
         return {}
