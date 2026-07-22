@@ -351,54 +351,6 @@ def plotting(results):
         plt.close()
         print(f"Saved plot to: {fname}")
 
-def plotting_params(results, trial=0):
-    """
-    Only works for single value of h
-
-    Args:
-        results (_type_): _description_
-    """
-    # make plots for given h values
-    plt.figure(figsize=(5, 4))
-    h = h_list[0]
-    all_param = np.asarray(results[h]["all_param"], dtype=float)
-    print(f"all_param shape for h={h}: {all_param.shape}")
-    print(f"all_param min/max for h={h}: {np.nanmin(all_param)}, {np.nanmax(all_param)}")
-
-    if all_param.ndim != 3:
-        raise ValueError(
-            f"Expected all_param to have shape (trials, snapshots, nparams), "
-            f"but got shape {all_param.shape}"
-        )
-
-    all_param_trial = all_param[trial]
-
-    n_available_snapshots = all_param_trial.shape[0]
-    steps_for_h = steps[:n_available_snapshots]
-
-    for param_idx in range(all_param_trial.shape[1]):
-        plt.plot(steps_for_h, all_param_trial[:, param_idx], label=f"param: {param_idx + 1}")
-
-    
-    plt.xlabel("Training steps")
-    plt.ylabel("param")
-    plt.title(f"params")
-    # There can be many parameters, so the legend can make this plot unreadable.
-    # plt.legend()
-    plt.tight_layout()
-    plt.grid(visible=True, which='both', linestyle='--')
-    os.makedirs(outdir, exist_ok=True)
-    
-    # ------------------------------------------------------------------------------------------------------------
-    fname = os.path.join(outdir, f"params.png") 
-    # ------------------------------------------------------------------------------------------------------------
-    
-    plt.savefig(fname, dpi=200)
-    plt.close()
-    print(f"Saved plot to: {fname}")
-
-
-
 def plotting_thetas(results):
     """
     Plot the magnitude of the probabilistic-reset theta parameters for all trials.
@@ -713,35 +665,6 @@ def plot_singular_values_per_step(results, threshold=1e-5):
         print(f"Saved per-step singular-value plot to: {fname}")
 
 
-def print_singular_values_at_step(results, h, step):
-    """
-    Print the exact per-cut singular-value spectrum at a specific training
-    step, for the single trial tracked by singular_value_trial_idx (see
-    track_singular_values_per_step). step must be one of the recorded
-    checkpoints (multiples of howoften_tosave).
-    """
-    sv_per_step = results[h].get("singular_values_per_step")
-    trial_idx = results[h].get("singular_value_trial_idx_used")
-
-    if sv_per_step is None:
-        print(f"No per-step singular-value data for h={h}; set track_singular_values_per_step=True.")
-        return
-
-    if step not in steps:
-        print(f"step={step} wasn't a recorded checkpoint; available steps: {list(steps[:len(sv_per_step)])}")
-        return
-
-    snapshot_idx = int(np.where(steps == step)[0][0])
-    spectra = sv_per_step[snapshot_idx]
-    if spectra is None:
-        print(f"No data recorded at step={step} (h={h}).")
-        return
-
-    print(f"\nSingular values at step={step} (h={h}, trial={trial_idx}):")
-    for cut_idx, sv in enumerate(spectra):
-        print(f"  cut {cut_idx}: {np.array2string(np.asarray(sv), precision=4)}")
-
-
 def plot_branch_bond_dims(ansatz, params, h, max_ancillas=6, prob_floor=1e-9, min_singular_value=1e-6):
     """
     Enumerate reset-ancilla branches for the given ansatz+params (see
@@ -867,12 +790,12 @@ def plotting_gradient_norms(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
+Lx = 2
 Ly = 2
 nlayers = 2
 howoften_tosave = 10
-trials = 20
-maxiter = 600
+trials = 2
+maxiter = 500
 howoften_toreset = 7
 unitary = True
 sparse = False
@@ -884,7 +807,7 @@ use_mps = True
 # None = no truncation at all (ToricCodeAnsatz's default): bond dimension
 # grows to whatever the true entanglement requires, which is the point of
 # this script. Set to an int to reproduce a fixed-bond-dimension run instead.
-bond_dim = None
+bond_dim = 32
 use_optimal_ordering = False
 
 # Choose which ansatz layers get probabilistic resets.
@@ -922,10 +845,6 @@ save_singular_values_per_step = False
 plot_branch_bond_dims_flag = True
 branch_trial_idx = 0  # which trial's final trained params to use
 max_ancillas_for_branch_plot = 6
-
-# Set to a specific recorded training step (a multiple of howoften_tosave) to
-# print that step's exact per-cut singular-value spectrum. None = skip.
-singular_value_query_step = 10
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -1019,7 +938,3 @@ if __name__ == "__main__":
             # return tuple in find_gs.py.
             final_params_h = results[h]["final_purity"][branch_trial_idx]
             plot_branch_bond_dims(ansatz_h, final_params_h, h, max_ancillas=max_ancillas_for_branch_plot)
-
-    if singular_value_query_step is not None:
-        for h in h_list:
-            print_singular_values_at_step(results, h, singular_value_query_step)
