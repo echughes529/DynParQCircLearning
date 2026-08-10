@@ -22,7 +22,7 @@ import pytest
 import tensorcircuit.quantum as qu
 
 from src.utilities.ansatz_classes import ToricCodeAnsatz
-from src.diagnostics.reset_branches import enumerate_branches
+from src.diagnostics.reset_branches import enumerate_branches, mps_bond_dims
 
 
 def _build_branch_data():
@@ -80,6 +80,25 @@ def test_bond_dims_valid(branch_data):
             max_theoretical = 2 ** min(cut + 1, n_system - cut - 1)
             assert 1 <= d <= max_theoretical, (
                 f"branch {x} cut {cut}: bond dim {d} outside [1, {max_theoretical}]"
+            )
+
+
+def test_truncation_error_matches_or_reduces_bond_dims(branch_data):
+    """truncation_error=None (used by the branch_data fixture) reconstructs
+    exactly; truncation_error=<float> should only ever match or reduce the
+    per-cut bond dimension for the same branch, never increase it, since
+    truncating can only discard singular values, not add them."""
+    n_system = branch_data["ansatz"].lattice.num_qubits
+    for x, info in branch_data["results"].items():
+        exact_bond_dims = info["bond_dims"]
+        truncated_bond_dims = mps_bond_dims(
+            info["phi"], n_system, truncation_error=1e-4
+        )
+        assert len(truncated_bond_dims) == len(exact_bond_dims)
+        for cut, (d_trunc, d_exact) in enumerate(zip(truncated_bond_dims, exact_bond_dims)):
+            assert 1 <= d_trunc <= d_exact, (
+                f"branch {x} cut {cut}: truncated bond dim {d_trunc} not in "
+                f"[1, {d_exact}] (exact bond dim)"
             )
 
 
