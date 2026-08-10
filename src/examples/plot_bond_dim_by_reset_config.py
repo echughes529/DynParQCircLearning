@@ -43,9 +43,6 @@ def save_training_history_csv(results, csv_path):
                     "training_step": int(step),
                     "energy": float(all_E[trial_idx, snapshot_idx]),
                     "energy_density": float(all_E[trial_idx, snapshot_idx] / n_qubits),
-                    "energy_density_minus_reference": float(
-                        (all_E[trial_idx, snapshot_idx] / n_qubits) - E_dens_ref_dict[h]
-                    ),
                 }
 
                 if all_P is not None and all_P.ndim == 2:
@@ -66,7 +63,6 @@ def save_training_history_csv(results, csv_path):
                 "training_step",
                 "energy",
                 "energy_density",
-                "energy_density_minus_reference",
                 "purity",
             ],
         )
@@ -101,9 +97,6 @@ def save_final_energies_csv(results, csv_path):
                 "trial": int(trial_idx + 1),
                 "final_energy": float(final_E[trial_idx]),
                 "final_energy_density": float(final_E[trial_idx] / n_qubits),
-                "final_energy_density_minus_reference": float(
-                    (final_E[trial_idx] / n_qubits) - E_dens_ref_dict[h]
-                ),
             }
 
             if final_purity is not None and final_purity.ndim == 1:
@@ -123,7 +116,6 @@ def save_final_energies_csv(results, csv_path):
                 "trial",
                 "final_energy",
                 "final_energy_density",
-                "final_energy_density_minus_reference",
                 "final_purity",
             ],
         )
@@ -313,17 +305,16 @@ def plotting(results):
             n_available_snapshots = all_E.shape[1]
             steps_for_h = steps[:n_available_snapshots]
 
-            E_dens_ref = E_dens_ref_dict[h]
-            mean_E_dens_diff = (mean_E / n_qubits) - E_dens_ref
-            std_E_dens_diff  = std_E / n_qubits
+            mean_E_dens = mean_E / n_qubits
+            std_E_dens  = std_E / n_qubits
 
             label = rf"$h = {h}$"
 
-            plt.plot(steps_for_h, mean_E_dens_diff, color=c, label=label)
+            plt.plot(steps_for_h, mean_E_dens, color=c, label=label)
             plt.fill_between(
                 steps_for_h,
-                mean_E_dens_diff - std_E_dens_diff,
-                mean_E_dens_diff + std_E_dens_diff,
+                mean_E_dens - std_E_dens,
+                mean_E_dens + std_E_dens,
                 color=c,
                 alpha=0.3,
             )
@@ -851,13 +842,6 @@ max_ancillas_for_branch_plot = 6
 tc_ = ToricCode(Lx, Ly)
 n_qubits = tc_.num_qubits   
 n_two_q_params_ron = 3 * (Lx-1) * (Ly-1) * 9 * nlayers
-
-# comments are my very rough estimates from graph in paper
-E_dens_ref_dict = {
-    0.0: 0,         # -1.05
-    0.12: 0,        # -1.00
-    0.96: 0,        # -1.00
-}
 
 # Allow job scripts (e.g. Eddie/Grid Engine) to set a per-run output directory.
 # Falls back to a local "outputs" folder when DPQC_OUTDIR is not set.
