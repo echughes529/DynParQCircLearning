@@ -113,7 +113,9 @@ def construct_circuit(n):
         qc.cx(k, k+1)
     return params, qc
 
-def construct_dyn_circuit_brickwork(params,sc):
+def construct_dyn_circuit_brickwork(params,sc,split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
     claws = sc["claws"]; ancillas = sc["ancillas"]; nparams = sc["nparams"]
     backend = sc["backend"]
@@ -145,7 +147,9 @@ def construct_dyn_circuit_brickwork(params,sc):
 
     return qc
 
-def construct_unitary_circuit_brickwork(params,sc):
+def construct_unitary_circuit_brickwork(params,sc,split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
     claws = sc["claws"]; ancillas = sc["ancillas"]; nparams = sc["nparams"]
     backend = sc["backend"]
@@ -162,10 +166,12 @@ def construct_unitary_circuit_brickwork(params,sc):
     return qc
 
 
-def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=3):
+def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=3,split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     toriccode = ToricCode(Lx,Ly)
     nplaquettes = (Lx-1)*(Ly-1)
-    nq = 2*Lx*Ly - Lx - Ly 
+    nq = 2*Lx*Ly - Lx - Ly
     if nlayers is None:
         # nlayers = max(Lx,Ly)
         nlayers = 2
@@ -209,10 +215,12 @@ def get_nresets_per_layer_toriccode(Lx, Ly, reset_direction=1):
     reset_qubits = [q for q in reset_qubits if q is not None]
     return len(reset_qubits)
 
-def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None):
+def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     toriccode = ToricCode(Lx,Ly)
     nplaquettes = (Lx-1)*(Ly-1)
-    nq = 2*Lx*Ly - Lx - Ly 
+    nq = 2*Lx*Ly - Lx - Ly
     if nlayers is None:
         # nlayers = max(Lx,Ly)
         nlayers = 2
@@ -256,7 +264,7 @@ def _decomposed_ccx(qc, c0, c1, target):
 def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                                                        n_mps_qubits, mps_claws,
                                                        mps_reset_qubits, active_reset_layers,
-                                                       sys_mps_positions):
+                                                       sys_mps_positions, split_conf=None):
     """
     Construct a dynamic circuit for toric code lattice with probabilistic resets.
 
@@ -274,6 +282,8 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
         active_reset_layers: List of layer indices with resets
         sys_mps_positions: List of system qubit MPS positions for final single-qubit layer
     """
+    if split_conf is None:
+        split_conf = make_split_conf()
     if len(params) != nparams:
         raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
 
@@ -304,7 +314,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
 
 
 
-def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
+def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None, split_conf=None):
     """
     Construct a circuit for toric code lattice with small-angle initialization.
     
@@ -319,13 +329,15 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
     Returns:
         tc.MPSCircuit: The constructed circuit
     """
+    if split_conf is None:
+        split_conf = make_split_conf()
     toriccode = ToricCode(Lx, Ly)
     nplaquettes = (Lx - 1) * (Ly - 1)
     nq = 2 * Lx * Ly - Lx - Ly
-    
+
     if nlayers is None:
         nlayers = 2
-    
+
     # Calculate number of parameters needed:
     # - Single-qubit rotations: 3 parameters per qubit per layer (Ry-Rz-Ry)
     # - nlayers of rotations + CZ gates, plus final layer of rotations
@@ -360,7 +372,9 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None):
     return qc
 
 
-def test_ansatz(param, n, nlayers, n_resets):
+def test_ansatz(param, n, nlayers, n_resets, split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     n = 2*n
     zz = np.kron(tc.gates._z_matrix, tc.gates._z_matrix)
     c = tc.MPSCircuit(n + n_resets, split=split_conf)
@@ -426,8 +440,6 @@ def make_split_conf(bond_dim=None):
         return {}
     return {"max_singular_values": bond_dim}
 
-split_conf = make_split_conf()
-
 def get_singular_values_per_cut(qc):
     """Singular-value spectrum at every bond of a canonicalized MPS circuit."""
     n_sites = len(qc.get_tensors())
@@ -441,7 +453,9 @@ def get_singular_values_per_cut(qc):
         singular_values.append(s)
     return singular_values
 
-def construct_dissipative_ansatz_genresets(n, nlayers, param=None):
+def construct_dissipative_ansatz_genresets(n, nlayers, param=None, split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     n_resets = nlayers*(n-1)
     if np.mod(n, 2) != 0:
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
@@ -720,8 +734,10 @@ def construct_dissipative_ansatz_dm(n, nlayers, param=None, dm_varqte=False, ret
     else:
         return dmc
 
-def construct_dissipative_ansatz_genresetsDM(n, nlayers, param=None,seed=None):
+def construct_dissipative_ansatz_genresetsDM(n, nlayers, param=None,seed=None,split_conf=None):
     """Not MPS-compatible (uses DMCircuit / Kraus channels)."""
+    if split_conf is None:
+        split_conf = make_split_conf()
     n_resets = nlayers*(n-1)
     if np.mod(n, 2) != 0:
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
@@ -749,7 +765,9 @@ def construct_dissipative_ansatz_genresetsDM(n, nlayers, param=None,seed=None):
     c, param_counter = onelayerofsingleunitaries(c, param, param_counter,n)
     return c
 
-def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_param_counter=False):
+def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_param_counter=False, split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     n_resets = nlayers*resets_nlayer
     if np.mod(n, 2) != 0:
         raise ValueError('Please choose the number of qubits as a multiple of 2.')
@@ -858,7 +876,9 @@ def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_p
     else:
         return c
 
-def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=None):
+def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, split_conf=None):
+    if split_conf is None:
+        split_conf = make_split_conf()
     n_resets = nlayers*resets_nlayer
     if np.mod(n, 2) != 0:
         raise ValueError('Please choose the number of qubits as a multiple of 2.')

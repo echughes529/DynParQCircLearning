@@ -102,6 +102,7 @@ class VariationalAnsatz(abc.ABC):
     learning_rate: float = 1e-2     # Adam learning rate
     sparse: bool = True             # work with the sparse Hamiltonian representation
     use_mps: bool = True         # use MPSCircuit with term-by-term expectation values
+    seed: Optional[int] = None      # RNG seed for parameter init; None draws and logs a fresh one
 
     # Noise simulation parameters
     perform_noisy_simulations: bool = False
@@ -143,8 +144,11 @@ class VariationalAnsatz(abc.ABC):
 
     def _initialise_parameters(self):
         """Initialize random parameters for all trials."""
-        randint = np.random.randint(1e5)
-        key = jax.random.PRNGKey(randint)
+        if self.seed is None:
+            self.seed = int(np.random.randint(1e5))
+        print(f"[{type(self).__name__}] parameter init seed: {self.seed} "
+              f"(pass seed={self.seed} to reproduce this run)")
+        key = jax.random.PRNGKey(self.seed)
         return jax.random.uniform(key, shape=[self.trials, self.nparams],
                                  minval=0, maxval=0)
 
@@ -293,6 +297,8 @@ class VariationalAnsatz(abc.ABC):
                         
                     if track_grads:
                         self.allgrads[:, counter, :] = gradient
+                        grad_norm = np.linalg.norm(np.asarray(gradient), axis=-1)
+                        print(f"step {i}: energy: {np.asarray(value)} | gradient norm: {grad_norm}")
                         
                     if track_bond_dim and self.use_mps:
                         for trial in range(self.trials):

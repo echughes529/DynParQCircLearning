@@ -26,7 +26,6 @@ from src.utilities.generate_ansatz import (
     construct_unitary_circuit_brickwork,
     construct_dyn_circuit_brickwork,
     make_split_conf,
-    split_conf,
 )
 
 
@@ -56,8 +55,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     use_optimal_ordering: bool = True
 
     def __post_init__(self):
-        import src.utilities.generate_ansatz as _ga
-        _ga.split_conf = make_split_conf(self.bond_dim)
+        self.split_conf = make_split_conf(self.bond_dim)
 
         self.lattice = ToricCode(self.Lx, self.Ly)
         self.nplaquettes = (self.Lx - 1) * (self.Ly - 1)
@@ -280,8 +278,11 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
     def _initialise_parameters(self):
         """Initialize parameters with optional small angle range."""
-        randint = np.random.randint(1e5)
-        key = jax.random.PRNGKey(randint)
+        if self.seed is None:
+            self.seed = int(np.random.randint(1e5))
+        print(f"[{type(self).__name__}] parameter init seed: {self.seed} "
+              f"(pass seed={self.seed} to reproduce this run)")
+        key = jax.random.PRNGKey(self.seed)
 
         if self.use_small_angle_initialization:
             return jax.random.uniform(
@@ -302,13 +303,13 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
         # If using probabilistic resets, overwrite the reset parameters
         # with values in [0, pi/2]
-        if self.use_prob_resets_ansatz:
+        if self.use_prob_resets_ansatz and self.reset_param_slice is not None:
             n_reset = self.total_resets
             reset_vals = jax.random.uniform(
                 key_reset,
                 shape=[self.trials, n_reset],
-                minval=jnp.pi/2.0 - 0.2,
-                maxval=jnp.pi/2.0- 0.1
+                minval= jnp.pi/2.0 - 0.2,
+                maxval= jnp.pi/2.0- 0.1
             )
 
             params = params.at[:, self.reset_param_slice].set(reset_vals)
@@ -319,7 +320,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         """Construct the circuit based on ansatz type."""
         if self.use_small_angle_initialization:
             return construct_smallangle_init_toriccodelattice(
-                params, self.Lx, self.Ly, self.nlayers
+                params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf
             )
         elif self.use_prob_resets_ansatz:
             return construct_dyn_circuit_toriccodelattice_prob_resets(
@@ -331,14 +332,15 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 mps_reset_qubits=self.mps_reset_qubits,
                 active_reset_layers=self.active_reset_layers,
                 sys_mps_positions=self.sys_mps_positions,
+                split_conf=self.split_conf,
             )
         elif self.unitary:
             return construct_unitary_circuit_toriccodelattice(
-                params, self.Lx, self.Ly, self.nlayers
+                params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf
             )
         else:
             return construct_dyn_circuit_toriccodelattice(
-                params, self.Lx, self.Ly, self.nlayers, self.howoften_toreset
+                params, self.Lx, self.Ly, self.nlayers, self.howoften_toreset, split_conf=self.split_conf
             )
 
     def _remap_qubit(self, logical_idx):
@@ -383,8 +385,7 @@ class OneDBrickwork(VariationalAnsatz):
     bond_dim: Optional[int] = None
 
     def __post_init__(self):
-        import src.utilities.generate_ansatz as _ga
-        _ga.split_conf = make_split_conf(self.bond_dim)
+        self.split_conf = make_split_conf(self.bond_dim)
 
         if self.n_ancillas is None and not(self.unitary):
             self.n_ancillas = self.num_qubits-1
@@ -419,11 +420,11 @@ class OneDBrickwork(VariationalAnsatz):
     def _circuit(self, params,seeds=None):
         sc = self._build_scaffold()
         if self.unitary:
-            qc = construct_unitary_circuit_brickwork(params,sc)
+            qc = construct_unitary_circuit_brickwork(params,sc,split_conf=self.split_conf)
         # elif seeds is None:
         #     qc = construct_dyn_circuit_brickwork_seeded(params,self.Lx,self.Ly,self.nlayers,self.howoften_toreset)
         else:
-            qc = construct_dyn_circuit_brickwork(params,sc)
+            qc = construct_dyn_circuit_brickwork(params,sc,split_conf=self.split_conf)
         
         return qc
 

@@ -188,7 +188,7 @@ def save_singular_values_csv(results, csv_path):
 
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets_ansatz=False,
-                   reset_layers=None, use_mps=True, bond_dim=2, use_optimal_ordering=True,
+                   reset_layers=None, use_mps=True, bond_dim=None, use_optimal_ordering=True,
                    ):
 
     if nlayers_current is None:
@@ -779,12 +779,14 @@ def plotting_gradient_norms(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 2
-Ly = 2
+Lx = 3
+Ly = 3
+h_list = [0] 
+
 nlayers = 2
-howoften_tosave = 10
-trials = 1
-maxiter = 500
+howoften_tosave = 1
+trials = 10
+maxiter = 1500
 howoften_toreset = 7
 unitary = True
 sparse = False
@@ -793,18 +795,18 @@ noise_rate = 5e-2
 number_of_shots = 500 
 use_prob_resets_ansatz = True
 use_mps = True
-bond_dim = 32
+bond_dim = 64
 use_optimal_ordering = False
 
 # Choose which ansatz layers get probabilistic resets.
 # Use None to apply resets on every layer, preserving the old behaviour.
 # Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = [1]
+reset_layers = []
 
 track_grads = True
-track_params = True
-track_bond_dim = True
-track_singular_values = True
+track_params = False
+track_bond_dim = False
+track_singular_values = False
 # Preferred: average singular values over all trials converged within 0.1% of
 # the reference energy density. This is only the fallback trial count, used
 # when no reference is defined for (Lx, Ly) or zero trials converge.
@@ -814,7 +816,7 @@ singular_value_ntrials = 5
 # single trial at every save step during training. Only correct for reset_layers
 # equal to the last layer (see ToricCodeAnsatz.reset_param_slice); set trials=1
 # when using this for a clean, cheap diagnostic run.
-track_singular_values_per_step = True
+track_singular_values_per_step = False
 singular_value_trial_idx = 0
 singular_value_threshold = 1e-4  # used by plot_singular_values_per_step to count "active" singular values per cut
 
@@ -832,7 +834,7 @@ n_two_q_params_ron = 3 * (Lx-1) * (Ly-1) * 9 * nlayers
 # Allow job scripts (e.g. Eddie/Grid Engine) to set a per-run output directory.
 # Falls back to a local "outputs" folder when DPQC_OUTDIR is not set.
 outdir = os.environ.get("DPQC_OUTDIR", "outputs")
-h_list    = [0.0] 
+
 colours   = ["tab:orange", "tab:blue", "turquoise"]
 n_snapshots = 1 + maxiter // howoften_tosave
 steps = np.arange(n_snapshots) * howoften_tosave
