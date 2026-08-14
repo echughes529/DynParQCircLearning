@@ -45,7 +45,23 @@ def cartanblock(params=None, paramindex = 0):
     paramindex = paramindex+3
     return blk, paramindex
 
-def apply_cartanblock(qc, qubit0, qubit1, params, paramindex):
+def apply_cartanblock(qc, qubit0, qubit1, params, paramindex, cartan_mode="separate"):
+    """Apply a 9-parameter Cartan block (2x Ry-Rz-Ry + Rxx/Ryy/Rzz) to qubit0, qubit1.
+
+    cartan_mode="separate" applies the six single-qubit rotations and three
+    two-qubit rotations as individual gate calls (the original behaviour).
+    cartan_mode="fused" builds the same 9-parameter block as a precomputed
+    4x4 unitary and applies it as a single two-qubit gate via qc.unitary(),
+    so a non-adjacent MPS pair only pays for one swap-in/swap-out instead of
+    up to three (see _cartan_gate).
+    """
+    if cartan_mode == "fused":
+        gate, paramindex = _cartan_gate(params, paramindex)
+        qc.unitary(qubit0, qubit1, unitary=gate, name="cartan")
+        return qc, paramindex
+    elif cartan_mode != "separate":
+        raise ValueError(f"Unknown cartan_mode: {cartan_mode!r} (expected 'separate' or 'fused')")
+
     qc, paramindex = universalsingle(qc, qubit0, params, paramindex)
     qc, paramindex = universalsingle(qc, qubit1, params, paramindex)
     qc.rxx(qubit0, qubit1, theta=params[paramindex])
@@ -54,16 +70,32 @@ def apply_cartanblock(qc, qubit0, qubit1, params, paramindex):
     paramindex = paramindex + 3
     return qc, paramindex
 
+def _cartan_gate(params, paramindex):
+    """Build the 9-parameter Cartan block as a precomputed 4x4 unitary matrix.
+
+    Same gate sequence/parameter order as the "separate" branch of
+    apply_cartanblock, but composed on a standalone 2-qubit circuit and
+    extracted via .matrix() so it can be applied as one qc.unitary() call.
+    """
+    block = tc.Circuit(2)
+    block, paramindex = universalsingle(block, 0, params, paramindex)
+    block, paramindex = universalsingle(block, 1, params, paramindex)
+    block.rxx(0, 1, theta=params[paramindex])
+    block.ryy(0, 1, theta=params[paramindex + 1])
+    block.rzz(0, 1, theta=params[paramindex + 2])
+    paramindex += 3
+    return block.matrix(), paramindex
+
 def universalsingle(circuit, index, params, paramindex):
     circuit.ry(index, theta=params[paramindex])
     circuit.rz(index, theta=params[paramindex+1])
     circuit.ry(index, theta=params[paramindex + 2])
     return circuit, paramindex + 3
 
-def onesetofunitaries(qc, claws, params, paramindex, measindx=None,measure=False,seed=None):
+def onesetofunitaries(qc, claws, params, paramindex, measindx=None,measure=False,seed=None,cartan_mode="separate"):
     # Note: measure=True path is not MPS-compatible (uses precompute/DMCircuit/Kraus channels).
     for cl in claws:
-        qc, paramindex = apply_cartanblock(qc, cl[0], cl[1], params, paramindex)
+        qc, paramindex = apply_cartanblock(qc, cl[0], cl[1], params, paramindex, cartan_mode=cartan_mode)
         if measure:
             if measindx is None:
                 raise ValueError("Please supply an argument for `measindx`")
@@ -119,7 +151,7 @@ def _normalize_mps_if_requested(qc, normalize_state):
         qc.normalize()
 
 
-def construct_dyn_circuit_brickwork(params,sc,split_conf=None,normalize_state=False):
+def construct_dyn_circuit_brickwork(params,sc,split_conf=None,normalize_state=True):
     if split_conf is None:
         split_conf = make_split_conf()
     nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
@@ -155,7 +187,7 @@ def construct_dyn_circuit_brickwork(params,sc,split_conf=None,normalize_state=Fa
 
     return qc
 
-def construct_unitary_circuit_brickwork(params,sc,split_conf=None,normalize_state=False):
+def construct_unitary_circuit_brickwork(params,sc,split_conf=None,normalize_state=True):
     if split_conf is None:
         split_conf = make_split_conf()
     nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
@@ -177,7 +209,7 @@ def construct_unitary_circuit_brickwork(params,sc,split_conf=None,normalize_stat
 
 
 def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=3,
-                                           split_conf=None,normalize_state=False):
+                                           split_conf=None,normalize_state=True,cartan_mode="separate"):
     if split_conf is None:
         split_conf = make_split_conf()
     toriccode = ToricCode(Lx,Ly)
@@ -200,7 +232,7 @@ def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=
     plaquettes = [toriccode.qubit_index(x,y,2) for x in range(Lx-1) for y in range(Ly-1)]
     measindex = 0
     for l in range(nlayers):
-        qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
+        qc, paramindex = onesetofunitaries(qc,claws,params,paramindex,cartan_mode=cartan_mode)
         if l % howoften == howoften-1:
             for p in plaquettes:
                 qc.cx(p,nq + nplaquettes + measindex)
@@ -229,7 +261,7 @@ def get_nresets_per_layer_toriccode(Lx, Ly, reset_direction=1):
     return len(reset_qubits)
 
 def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,
-                                               split_conf=None,normalize_state=False):
+                                               split_conf=None,normalize_state=True,cartan_mode="separate"):
     if split_conf is None:
         split_conf = make_split_conf()
     toriccode = ToricCode(Lx,Ly)
@@ -251,7 +283,7 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,
     # plaquettes = [toriccode.qubit_index(x,y,2) for x in range(Lx-1) for y in range(Ly-1)]
     measindex = 0
     for l in range(nlayers):
-        qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
+        qc, paramindex = onesetofunitaries(qc,claws,params,paramindex,cartan_mode=cartan_mode)
         _normalize_mps_if_requested(qc, normalize_state)
 
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
@@ -260,7 +292,19 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,
 
 
 def _decomposed_ccx(qc, c0, c1, target):
-    """Toffoli (CCX) decomposed into 1- and 2-qubit gates for MPSCircuit compatibility."""
+    """Toffoli (CCX) decomposed into 1- and 2-qubit gates.
+
+    Legacy/reproduction path (toffoli_mode="decomposed"). Despite the
+    original docstring, tc.MPSCircuit *does* support a direct .ccx()/
+    .toffoli() call (used elsewhere in this file, e.g.
+    construct_dissipative_ansatz_genresets) -- this decomposition was not
+    required for MPSCircuit compatibility. It's kept as the default/legacy
+    path pending correctness+gradient validation of toffoli_mode="direct"
+    (see src/diagnostics/test_mps_gate_paths.py); it may be a workaround for
+    a real numerical issue hit during the original MPS port (git history:
+    commit 294afef, "works for 2x2, strange results for 3x2"), not merely an
+    API-compatibility shim.
+    """
     qc.h(target)
     qc.cnot(c1, target)
     qc.td(target)
@@ -281,7 +325,9 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                                                        n_mps_qubits, mps_claws,
                                                        mps_reset_qubits, active_reset_layers,
                                                        sys_mps_positions, split_conf=None,
-                                                       normalize_state=False):
+                                                       normalize_state=True,
+                                                       cartan_mode="separate",
+                                                       toffoli_mode="decomposed"):
     """
     Construct a dynamic circuit for toric code lattice with probabilistic resets.
 
@@ -298,11 +344,15 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                           ordered by layer then by reset qubit
         active_reset_layers: List of layer indices with resets
         sys_mps_positions: List of system qubit MPS positions for final single-qubit layer
+        cartan_mode: "separate" (default) or "fused" -- see apply_cartanblock.
+        toffoli_mode: "decomposed" (default) or "direct" -- see _decomposed_ccx.
     """
     if split_conf is None:
         split_conf = make_split_conf()
     if len(params) != nparams:
         raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
+    if toffoli_mode not in ("decomposed", "direct"):
+        raise ValueError(f"Unknown toffoli_mode: {toffoli_mode!r} (expected 'decomposed' or 'direct')")
 
     qc = tc.MPSCircuit(n_mps_qubits, split=split_conf)
     paramindex = 0
@@ -311,7 +361,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
     reset_idx = 0
 
     for l in range(nlayers):
-        qc, paramindex = onesetofunitaries(qc, mps_claws, params, paramindex)
+        qc, paramindex = onesetofunitaries(qc, mps_claws, params, paramindex, cartan_mode=cartan_mode)
 
         if l in active_reset_layers:
             for _ in range(nresets_per_layer):
@@ -320,8 +370,12 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                 qc.ry(prob_mps, theta=params[paramindex])
                 paramindex += 1
 
-                _decomposed_ccx(qc, prob_mps, sys_mps, purif_mps)
-                _decomposed_ccx(qc, prob_mps, purif_mps, sys_mps)
+                if toffoli_mode == "direct":
+                    qc.toffoli(prob_mps, sys_mps, purif_mps)
+                    qc.toffoli(prob_mps, purif_mps, sys_mps)
+                else:
+                    _decomposed_ccx(qc, prob_mps, sys_mps, purif_mps)
+                    _decomposed_ccx(qc, prob_mps, purif_mps, sys_mps)
 
                 reset_idx += 1
         _normalize_mps_if_requested(qc, normalize_state)
@@ -334,7 +388,7 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
 
 
 def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None,
-                                               split_conf=None,normalize_state=False):
+                                               split_conf=None,normalize_state=True):
     """
     Construct a circuit for toric code lattice with small-angle initialization.
     
@@ -394,7 +448,7 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None,
     return qc
 
 
-def test_ansatz(param, n, nlayers, n_resets, split_conf=None,normalize_state=False):
+def test_ansatz(param, n, nlayers, n_resets, split_conf=None,normalize_state=True):
     if split_conf is None:
         split_conf = make_split_conf()
     n = 2*n
@@ -480,7 +534,7 @@ def get_singular_values_per_cut(qc):
     return singular_values
 
 def construct_dissipative_ansatz_genresets(n, nlayers, param=None, split_conf=None,
-                                           normalize_state=False):
+                                           normalize_state=True):
     if split_conf is None:
         split_conf = make_split_conf()
     n_resets = nlayers*(n-1)
@@ -796,7 +850,7 @@ def construct_dissipative_ansatz_genresetsDM(n, nlayers, param=None,seed=None,sp
 
 def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None,
                                  return_param_counter=False, split_conf=None,
-                                 normalize_state=False):
+                                 normalize_state=True):
     if split_conf is None:
         split_conf = make_split_conf()
     n_resets = nlayers*resets_nlayer
@@ -910,7 +964,7 @@ def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None,
         return c
 
 def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=None,
-                                            split_conf=None,normalize_state=False):
+                                            split_conf=None,normalize_state=True):
     if split_conf is None:
         split_conf = make_split_conf()
     n_resets = nlayers*resets_nlayer

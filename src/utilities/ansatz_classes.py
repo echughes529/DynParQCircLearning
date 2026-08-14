@@ -54,7 +54,18 @@ class ToricCodeAnsatz(VariationalAnsatz):
     bond_dim: Optional[int] = None
     use_optimal_ordering: bool = True
 
+    # SVD-reduction feature flags (see src/diagnostics/test_mps_gate_paths.py
+    # and src/diagnostics/benchmark_mps_gate_paths.py for correctness/perf
+    # validation before flipping either default).
+    cartan_mode: str = "fused"     # "separate" or "fused"
+    toffoli_mode: str = "direct"  # "decomposed" or "direct"
+
     def __post_init__(self):
+        if self.cartan_mode not in ("separate", "fused"):
+            raise ValueError(f"Unknown cartan_mode: {self.cartan_mode!r} (expected 'separate' or 'fused')")
+        if self.toffoli_mode not in ("decomposed", "direct"):
+            raise ValueError(f"Unknown toffoli_mode: {self.toffoli_mode!r} (expected 'decomposed' or 'direct')")
+
         self.split_conf = make_split_conf(self.bond_dim)
 
         self.lattice = ToricCode(self.Lx, self.Ly)
@@ -235,7 +246,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
         return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h,
                     self.trials, self.maxiter, self.howoften_tosave, self.learning_rate,
                     self.sparse, self.use_prob_resets_ansatz, self.prob_reset_direction,
-                    reset_layers_key, self.use_mps, self.normalize_state, self.bond_dim))
+                    reset_layers_key, self.use_mps, self.normalize_state, self.bond_dim,
+                    self.cartan_mode, self.toffoli_mode))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -335,16 +347,19 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 sys_mps_positions=self.sys_mps_positions,
                 split_conf=self.split_conf,
                 normalize_state=self.normalize_state,
+                cartan_mode=self.cartan_mode,
+                toffoli_mode=self.toffoli_mode,
             )
         elif self.unitary:
             return construct_unitary_circuit_toriccodelattice(
                 params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf,
-                normalize_state=self.normalize_state,
+                normalize_state=self.normalize_state, cartan_mode=self.cartan_mode,
             )
         else:
             return construct_dyn_circuit_toriccodelattice(
                 params, self.Lx, self.Ly, self.nlayers, self.howoften_toreset,
                 split_conf=self.split_conf, normalize_state=self.normalize_state,
+                cartan_mode=self.cartan_mode,
             )
 
     def _remap_qubit(self, logical_idx):
