@@ -47,6 +47,7 @@ tc.set_contractor("custom", optimizer=optr, preprocessing=True)
 import optax
 
 from src.utilities.generate_ansatz import *
+from src.utilities.generate_ansatz import _normalize_mps_if_requested
 from src.utilities.result_saver import ResultSaver
 
 def _make_jit_helpers(ansatz: Any) -> Tuple[Callable, Callable]:
@@ -157,13 +158,15 @@ class VariationalAnsatz(abc.ABC):
         """Compute energy for given parameters."""
         qc = self._circuit(params, seed)
 
-        if self.normalize_state:
-            if not self.use_mps:
-                raise ValueError("normalize_state=True is only supported with use_mps=True")
-            # Layer builders already normalize at each boundary. Keep this
-            # final normalization as a cheap safeguard immediately before the
-            # Hamiltonian expectation values.
-            qc.normalize()
+        if self.normalize_state and not self.use_mps:
+            raise ValueError("normalize_state=True is only supported with use_mps=True")
+        # Layer builders already normalize at each boundary. Keep this
+        # final normalization as a cheap safeguard immediately before the
+        # Hamiltonian expectation values.
+        _normalize_mps_if_requested(qc, self.normalize_state)
+
+        state_norm = K.norm(qc.wavefunction() if self.use_mps else qc.state())
+        jax.debug.print("state norm before energy eval: {}", state_norm)
 
         if self.use_mps:
             terms = self._hamiltonian_terms()
