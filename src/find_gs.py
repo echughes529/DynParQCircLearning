@@ -103,7 +103,7 @@ class VariationalAnsatz(abc.ABC):
     learning_rate: float = 1e-2     # Adam learning rate
     sparse: bool = True             # work with the sparse Hamiltonian representation
     use_mps: bool = True         # use MPSCircuit with term-by-term expectation values
-    normalize_state: bool = False   # normalize after each MPS layer and before its energy
+    normalize_state: bool = True   # normalize after each MPS layer and before its energy
     seed: Optional[int] = None      # RNG seed for parameter init; None draws and logs a fresh one
 
     # Noise simulation parameters
