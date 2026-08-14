@@ -235,7 +235,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h,
                     self.trials, self.maxiter, self.howoften_tosave, self.learning_rate,
                     self.sparse, self.use_prob_resets_ansatz, self.prob_reset_direction,
-                    reset_layers_key, self.use_mps, self.bond_dim))
+                    reset_layers_key, self.use_mps, self.normalize_state, self.bond_dim))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -320,7 +320,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
         """Construct the circuit based on ansatz type."""
         if self.use_small_angle_initialization:
             return construct_smallangle_init_toriccodelattice(
-                params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf
+                params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf,
+                normalize_state=self.normalize_state,
             )
         elif self.use_prob_resets_ansatz:
             return construct_dyn_circuit_toriccodelattice_prob_resets(
@@ -333,14 +334,17 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 active_reset_layers=self.active_reset_layers,
                 sys_mps_positions=self.sys_mps_positions,
                 split_conf=self.split_conf,
+                normalize_state=self.normalize_state,
             )
         elif self.unitary:
             return construct_unitary_circuit_toriccodelattice(
-                params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf
+                params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf,
+                normalize_state=self.normalize_state,
             )
         else:
             return construct_dyn_circuit_toriccodelattice(
-                params, self.Lx, self.Ly, self.nlayers, self.howoften_toreset, split_conf=self.split_conf
+                params, self.Lx, self.Ly, self.nlayers, self.howoften_toreset,
+                split_conf=self.split_conf, normalize_state=self.normalize_state,
             )
 
     def _remap_qubit(self, logical_idx):
@@ -408,7 +412,10 @@ class OneDBrickwork(VariationalAnsatz):
 
 
     def __hash__(self):
-        return hash((self.num_qubits, self.nlayers, self.howoften_toreset, self.h, self.trials, self.maxiter, self.howoften_tosave, self.learning_rate, self.sparse, self.use_mps, self.bond_dim))
+        return hash((self.num_qubits, self.nlayers, self.howoften_toreset, self.h,
+                     self.trials, self.maxiter, self.howoften_tosave,
+                     self.learning_rate, self.sparse, self.use_mps,
+                     self.normalize_state, self.bond_dim))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -420,11 +427,17 @@ class OneDBrickwork(VariationalAnsatz):
     def _circuit(self, params,seeds=None):
         sc = self._build_scaffold()
         if self.unitary:
-            qc = construct_unitary_circuit_brickwork(params,sc,split_conf=self.split_conf)
+            qc = construct_unitary_circuit_brickwork(
+                params, sc, split_conf=self.split_conf,
+                normalize_state=self.normalize_state,
+            )
         # elif seeds is None:
         #     qc = construct_dyn_circuit_brickwork_seeded(params,self.Lx,self.Ly,self.nlayers,self.howoften_toreset)
         else:
-            qc = construct_dyn_circuit_brickwork(params,sc,split_conf=self.split_conf)
+            qc = construct_dyn_circuit_brickwork(
+                params, sc, split_conf=self.split_conf,
+                normalize_state=self.normalize_state,
+            )
         
         return qc
 

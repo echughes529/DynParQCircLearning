@@ -133,6 +133,7 @@ LIVE_MAXITER = 150            # you reported NaN ~100 steps in; this gives margi
 LIVE_PRINT_EVERY = 5          # spectrum check is a forward-only extra pass, so not every step
 LIVE_HISTORY_KEEP = 10        # how many recent steps to show in the snapshot dump
 LIVE_USE_OPTIMAL_ORDERING = False  # skip the slow qubit-ordering search; doesn't change the physics
+LIVE_NORMALIZE_STATE = False  # A/B toggle: run the same LIVE_SEED once False, once True
 LIVE_SEED = None  # None -> draw + log a fresh seed each run (was previously always the case,
 # silently and unlogged -- ToricCodeAnsatz now logs "parameter init seed: N" on construction).
 # Once a run reproduces a NaN, set LIVE_SEED = N (that exact value) here to replay the identical
@@ -404,7 +405,8 @@ def section4_live_training_diagnostic():
     print(f"  jax devices: {jax.devices()}")
     print(f"  config: Lx={LIVE_LX} Ly={LIVE_LY} nlayers={LIVE_NLAYERS} "
           f"howoften_toreset={LIVE_HOWOFTEN_TORESET} reset_layers={LIVE_RESET_LAYERS} "
-          f"bond_dim={LIVE_BOND_DIM} maxiter={LIVE_MAXITER}")
+          f"bond_dim={LIVE_BOND_DIM} maxiter={LIVE_MAXITER} "
+          f"normalize_state={LIVE_NORMALIZE_STATE}")
     print("  (first step pays a one-off cotengra contraction-path search + JIT "
           "compile -- can take ~10-20 minutes; steps after that are much "
           "faster. Consider running this inside a job script.)")
@@ -416,6 +418,11 @@ def section4_live_training_diagnostic():
           "comparison it was meant to be.")
 
     import optax
+    from src.diagnostics.mps_numerics import (
+        format_magnitude_summary,
+        magnitude_summary,
+        singular_value_summary,
+    )
     from src.utilities.ansatz_classes import ToricCodeAnsatz
     from src.utilities.generate_ansatz import get_singular_values_per_cut
 
@@ -423,6 +430,7 @@ def section4_live_training_diagnostic():
         Lx=LIVE_LX, Ly=LIVE_LY, nlayers=LIVE_NLAYERS,
         howoften_toreset=LIVE_HOWOFTEN_TORESET, reset_layers=LIVE_RESET_LAYERS,
         trials=1, bond_dim=LIVE_BOND_DIM, use_optimal_ordering=LIVE_USE_OPTIMAL_ORDERING,
+        normalize_state=LIVE_NORMALIZE_STATE,
         seed=LIVE_SEED,
     )
     params = jnp.array(ansatz.initparams)
@@ -440,6 +448,14 @@ def section4_live_training_diagnostic():
               f"energy_nan={r['energy_nan']}  grad_nan={r['grad_nan']}  "
               f"tensor_nan={r['tensor_nan']}  max_tied_multiplicity={r['max_multiplicity']}  "
               f"min_gap={_fmt_gap(r['min_gap'])}{extra}")
+        if r["center_tensor"] is not None:
+            print(f"    center tensor {r['center_position']}: "
+                  f"{format_magnitude_summary(r['center_tensor'])}")
+        if r["singular_values"] is not None:
+            sv = r["singular_values"]
+            print(f"    singular values: min_nonzero={sv['min_nonzero']:.3e}  "
+                  f"max_condition={sv['max_condition']:.3e}  "
+                  f"zeros={sv['zero_count']}  nonfinite={sv['nonfinite_count']}")
 
     def _dump_snapshot(reason, spectra=None):
         print(f"\n  *** {reason} -- dumping snapshot ***")
@@ -467,7 +483,8 @@ def section4_live_training_diagnostic():
 
         record = dict(step=step, energy=float(np.real(value_np).mean()), grad_norm=grad_norm,
                       energy_nan=energy_nan, grad_nan=grad_nan, tensor_nan=None,
-                      max_multiplicity=None, min_gap=None)
+                      max_multiplicity=None, min_gap=None, center_position=None,
+                      center_tensor=None, singular_values=None)
 
         # The forward-only spectrum diagnostic (building qc + a per-cut numpy
         # SVD) is itself capable of failing outright -- job 3594457 hit
@@ -481,10 +498,25 @@ def section4_live_training_diagnostic():
         if do_check:
             try:
                 qc = ansatz._circuit(params[0])
+                if ansatz.normalize_state:
+                    # Match energy_from_params(): inspect the same normalized
+                    # MPS that is passed to the Hamiltonian expectations.
+                    qc.normalize()
                 tensors = [np.asarray(t) for t in qc.get_tensors()]
                 record["tensor_nan"] = any(bool(np.isnan(t).any() or np.isinf(t).any()) for t in tensors)
+
+                # Capture the actual orthogonality-centre tensor before
+                # get_singular_values_per_cut() moves the centre across every
+                # site. For a canonical MPS, this is also where the full state
+                # norm is concentrated, so its scale is especially useful.
+                center_position = qc.get_center_position()
+                record["center_position"] = center_position
+                if center_position is not None:
+                    record["center_tensor"] = magnitude_summary(tensors[center_position])
+
                 spectra = get_singular_values_per_cut(qc)
                 record["max_multiplicity"], record["min_gap"] = _spectrum_degeneracy_summary(spectra)
+                record["singular_values"] = singular_value_summary(spectra)
             except Exception as e:
                 history.append(record)
                 _print_step(record, extra=f"  [spectrum diagnostic raised {type(e).__name__}: {e}]")
@@ -493,9 +525,8 @@ def section4_live_training_diagnostic():
                       "already NaN/Inf or extremely ill-conditioned at this step.")
                 try:
                     for i, t in enumerate(tensors):
-                        bad = bool(np.isnan(t).any() or np.isinf(t).any())
-                        max_abs = "n/a (nan/inf present)" if bad else f"{np.max(np.abs(t)):.4e}"
-                        print(f"    tensor {i}: shape={t.shape}  nan_or_inf={bad}  max_abs={max_abs}")
+                        print(f"    tensor {i}: shape={t.shape}  "
+                              f"{format_magnitude_summary(magnitude_summary(t))}")
                 except NameError:
                     print("    (circuit construction itself failed before tensors could be inspected)")
                 _dump_snapshot(f"exception during spectrum diagnostic at step {step}")

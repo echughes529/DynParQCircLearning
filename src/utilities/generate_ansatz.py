@@ -113,7 +113,13 @@ def construct_circuit(n):
         qc.cx(k, k+1)
     return params, qc
 
-def construct_dyn_circuit_brickwork(params,sc,split_conf=None):
+def _normalize_mps_if_requested(qc, normalize_state):
+    """Normalize an MPS at a layer boundary when the A/B toggle is enabled."""
+    if normalize_state:
+        qc.normalize()
+
+
+def construct_dyn_circuit_brickwork(params,sc,split_conf=None,normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
@@ -129,8 +135,10 @@ def construct_dyn_circuit_brickwork(params,sc,split_conf=None):
                 for a in ancillas:
                     qc.mid_measurement(a, keep=0)
                     measindex += 1
+            _normalize_mps_if_requested(qc, normalize_state)
 
         qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
+        _normalize_mps_if_requested(qc, normalize_state)
 
     # elif backend=="qiskit":
     #     parameters = ParameterVector('θ', nparams)
@@ -147,7 +155,7 @@ def construct_dyn_circuit_brickwork(params,sc,split_conf=None):
 
     return qc
 
-def construct_unitary_circuit_brickwork(params,sc,split_conf=None):
+def construct_unitary_circuit_brickwork(params,sc,split_conf=None,normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     nq = sc["nq"]; n_ancillas = sc["n_ancillas"]; nlayers = sc["nlayers"]; howoften = sc["howoften"]
@@ -160,13 +168,16 @@ def construct_unitary_circuit_brickwork(params,sc,split_conf=None):
 
         for l in range(nlayers):
             qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
+            _normalize_mps_if_requested(qc, normalize_state)
 
         qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
+        _normalize_mps_if_requested(qc, normalize_state)
 
     return qc
 
 
-def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=3,split_conf=None):
+def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=3,
+                                           split_conf=None,normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     toriccode = ToricCode(Lx,Ly)
@@ -195,8 +206,10 @@ def construct_dyn_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,howoften=
                 qc.cx(p,nq + nplaquettes + measindex)
                 qc.cx(nq+nplaquettes+measindex, p)
                 measindex += 1
+        _normalize_mps_if_requested(qc, normalize_state)
 
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
+    _normalize_mps_if_requested(qc, normalize_state)
     return qc
 
 def get_nresets_per_layer_toriccode(Lx, Ly, reset_direction=1):
@@ -215,7 +228,8 @@ def get_nresets_per_layer_toriccode(Lx, Ly, reset_direction=1):
     reset_qubits = [q for q in reset_qubits if q is not None]
     return len(reset_qubits)
 
-def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,split_conf=None):
+def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,
+                                               split_conf=None,normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     toriccode = ToricCode(Lx,Ly)
@@ -238,8 +252,10 @@ def construct_unitary_circuit_toriccodelattice(params,Lx,Ly,nlayers = None,split
     measindex = 0
     for l in range(nlayers):
         qc, paramindex = onesetofunitaries(qc,claws,params,paramindex)
+        _normalize_mps_if_requested(qc, normalize_state)
 
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,nq)
+    _normalize_mps_if_requested(qc, normalize_state)
     return qc
 
 
@@ -264,7 +280,8 @@ def _decomposed_ccx(qc, c0, c1, target):
 def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                                                        n_mps_qubits, mps_claws,
                                                        mps_reset_qubits, active_reset_layers,
-                                                       sys_mps_positions, split_conf=None):
+                                                       sys_mps_positions, split_conf=None,
+                                                       normalize_state=False):
     """
     Construct a dynamic circuit for toric code lattice with probabilistic resets.
 
@@ -307,14 +324,17 @@ def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                 _decomposed_ccx(qc, prob_mps, purif_mps, sys_mps)
 
                 reset_idx += 1
+        _normalize_mps_if_requested(qc, normalize_state)
 
     qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,
                                                 qubit_indices=sys_mps_positions)
+    _normalize_mps_if_requested(qc, normalize_state)
     return qc
 
 
 
-def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None, split_conf=None):
+def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None,
+                                               split_conf=None,normalize_state=False):
     """
     Construct a circuit for toric code lattice with small-angle initialization.
     
@@ -364,15 +384,17 @@ def construct_smallangle_init_toriccodelattice(params, Lx, Ly, nlayers=None, spl
         # Apply fixed CZ gates on claws
         for cl in claws:
             qc.cz(cl[0], cl[1])
+        _normalize_mps_if_requested(qc, normalize_state)
     
     # Final layer of single-qubit rotations
     for i in range(nq):
         qc, paramindex = universalsingle(qc,i,params,paramindex)
+    _normalize_mps_if_requested(qc, normalize_state)
     
     return qc
 
 
-def test_ansatz(param, n, nlayers, n_resets, split_conf=None):
+def test_ansatz(param, n, nlayers, n_resets, split_conf=None,normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     n = 2*n
@@ -384,6 +406,7 @@ def test_ansatz(param, n, nlayers, n_resets, split_conf=None):
         c.ry(i, theta=paramc[counter])
         counter += 1
         c.cnot(i, i+int(n/2))
+    _normalize_mps_if_requested(c, normalize_state)
     for j in range(nlayers-1):
         for i in range(n - 1):
             c.exp1(i, i + 1, unitary=zz, theta=paramc[counter])
@@ -391,12 +414,14 @@ def test_ansatz(param, n, nlayers, n_resets, split_conf=None):
         for i in range(n):
             c.rx(i, theta=paramc[counter])
             counter += 1
+        _normalize_mps_if_requested(c, normalize_state)
     # Intermediate layer of resets
     counter_aux = 0
     for i in np.random.randint(0, int(n/2), n_resets).tolist():
         c.cnot(i, n+counter_aux)
         c.cnot(n+counter_aux, i)
         counter_aux+=1
+    _normalize_mps_if_requested(c, normalize_state)
     # Final layer of rotations
     for i in range(n - 1):
         c.exp1(i, i + 1, unitary=zz, theta=paramc[counter])
@@ -404,6 +429,7 @@ def test_ansatz(param, n, nlayers, n_resets, split_conf=None):
     for i in range(n):
         c.rx(i, theta=paramc[counter])
         counter += 1
+    _normalize_mps_if_requested(c, normalize_state)
 
     return paramc, c
 
@@ -453,7 +479,8 @@ def get_singular_values_per_cut(qc):
         singular_values.append(s)
     return singular_values
 
-def construct_dissipative_ansatz_genresets(n, nlayers, param=None, split_conf=None):
+def construct_dissipative_ansatz_genresets(n, nlayers, param=None, split_conf=None,
+                                           normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     n_resets = nlayers*(n-1)
@@ -533,6 +560,7 @@ def construct_dissipative_ansatz_genresets(n, nlayers, param=None, split_conf=No
                                ctrl=[int(n + counter_aux + n_resets), int(n + counter_aux)])
                 counter_aux += 1
                 param_counter += 2
+        _normalize_mps_if_requested(c, normalize_state)
 
     # Coherent Layer
     # Even
@@ -570,6 +598,7 @@ def construct_dissipative_ansatz_genresets(n, nlayers, param=None, split_conf=No
     for i in range(1, n - 1):
         c.r(i, theta=paramc[param_counter], phi=paramc[param_counter + 1], alpha=paramc[param_counter + 2])
         param_counter += 3
+    _normalize_mps_if_requested(c, normalize_state)
     return c
 
 
@@ -765,7 +794,9 @@ def construct_dissipative_ansatz_genresetsDM(n, nlayers, param=None,seed=None,sp
     c, param_counter = onelayerofsingleunitaries(c, param, param_counter,n)
     return c
 
-def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_param_counter=False, split_conf=None):
+def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None,
+                                 return_param_counter=False, split_conf=None,
+                                 normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     n_resets = nlayers*resets_nlayer
@@ -833,6 +864,7 @@ def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_p
                 c.cnot(int(r), int(n + counter_aux))
                 c.cnot(int(n + counter_aux), int(r))
                 counter_aux += 1
+        _normalize_mps_if_requested(c, normalize_state)
 
     #Coherent Layer
     # Even
@@ -871,12 +903,14 @@ def construct_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, return_p
     for i in range(1, n - 1):
         c.r(i, theta=paramc[param_counter], phi=paramc[param_counter + 1], alpha=paramc[param_counter + 2])
         param_counter += 3
+    _normalize_mps_if_requested(c, normalize_state)
     if return_param_counter:
         return param_counter
     else:
         return c
 
-def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=None, split_conf=None):
+def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=None,
+                                            split_conf=None,normalize_state=False):
     if split_conf is None:
         split_conf = make_split_conf()
     n_resets = nlayers*resets_nlayer
@@ -930,6 +964,7 @@ def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=Non
                 c.cnot(int(r), int(n + counter_aux))
                 c.cnot(int(n + counter_aux), int(r))
                 counter_aux += 1
+        _normalize_mps_if_requested(c, normalize_state)
 
     # Coherent even layer
     for i in range(n):
@@ -941,6 +976,7 @@ def construct_simplified_dissipative_ansatz(n, nlayers, resets_nlayer, param=Non
         c.ry(i, theta=paramc[param_counter])
         c.cnot(i + 1, i)
         param_counter += 1
+    _normalize_mps_if_requested(c, normalize_state)
     return c
 
 def construct_fldc_toriccodelattice(Lx,Ly):

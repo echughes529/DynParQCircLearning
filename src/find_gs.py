@@ -102,6 +102,7 @@ class VariationalAnsatz(abc.ABC):
     learning_rate: float = 1e-2     # Adam learning rate
     sparse: bool = True             # work with the sparse Hamiltonian representation
     use_mps: bool = True         # use MPSCircuit with term-by-term expectation values
+    normalize_state: bool = False   # normalize after each MPS layer and before its energy
     seed: Optional[int] = None      # RNG seed for parameter init; None draws and logs a fresh one
 
     # Noise simulation parameters
@@ -155,6 +156,14 @@ class VariationalAnsatz(abc.ABC):
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
         qc = self._circuit(params, seed)
+
+        if self.normalize_state:
+            if not self.use_mps:
+                raise ValueError("normalize_state=True is only supported with use_mps=True")
+            # Layer builders already normalize at each boundary. Keep this
+            # final normalization as a cheap safeguard immediately before the
+            # Hamiltonian expectation values.
+            qc.normalize()
 
         if self.use_mps:
             terms = self._hamiltonian_terms()
