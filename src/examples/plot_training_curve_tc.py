@@ -784,9 +784,9 @@ Ly = 3
 h_list = [0] 
 
 nlayers = 2
-howoften_tosave = 1
-trials = 10
-maxiter = 1500
+howoften_tosave = 10
+trials = 3
+maxiter = 1000
 howoften_toreset = 7
 unitary = True
 sparse = False
@@ -796,14 +796,14 @@ number_of_shots = 500
 use_prob_resets_ansatz = True
 use_mps = True
 bond_dim = 64
-use_optimal_ordering = False
+use_optimal_ordering = True
 
 # Choose which ansatz layers get probabilistic resets.
 # Use None to apply resets on every layer, preserving the old behaviour.
 # Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = []
+reset_layers = [1]
 
-track_grads = True
+track_grads = False
 track_params = False
 track_bond_dim = False
 track_singular_values = False
