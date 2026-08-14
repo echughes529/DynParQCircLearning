@@ -152,7 +152,7 @@ class VariationalAnsatz(abc.ABC):
               f"(pass seed={self.seed} to reproduce this run)")
         key = jax.random.PRNGKey(self.seed)
         return jax.random.uniform(key, shape=[self.trials, self.nparams],
-                                 minval=0, maxval=0)
+                                 minval=0, maxval=jnp.pi)
 
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
@@ -165,8 +165,6 @@ class VariationalAnsatz(abc.ABC):
         # Hamiltonian expectation values.
         _normalize_mps_if_requested(qc, self.normalize_state)
 
-        state_norm = K.norm(qc.wavefunction() if self.use_mps else qc.state())
-        jax.debug.print("state norm before energy eval: {}", state_norm)
 
         if self.use_mps:
             terms = self._hamiltonian_terms()
