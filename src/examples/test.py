@@ -114,12 +114,12 @@ assert jnp.array([1.0], dtype=jnp.complex128).dtype == jnp.complex128, (
     "everything below would silently run at float32. See docstring note 4."
 )
 
-RUN_SECTION_1 = True
-RUN_SECTION_2 = True
-RUN_SECTION_3 = True
+RUN_SECTION_1 = False
+RUN_SECTION_2 = False
+RUN_SECTION_3 = False
 RUN_SECTION_4 = True  # live training run -- needs the real venv, can be slow; see docstring
-RUN_SECTION_5 = True  # static scaling sweep -- needs the real venv, quick
-RUN_SECTION_6_NOTES = True
+RUN_SECTION_5 = False  # static scaling sweep -- needs the real venv, quick
+RUN_SECTION_6_NOTES = False
 
 # Section 4 (live training diagnostic) config -- defaults match the failing
 # job in logs/2026-08-11_15-41-44_tc_3x3_bd_64_print_grad_3593082
@@ -129,12 +129,21 @@ LIVE_NLAYERS = 2
 LIVE_HOWOFTEN_TORESET = 7
 LIVE_RESET_LAYERS = [1]
 LIVE_BOND_DIM = 64
-LIVE_MAXITER = 150            # you reported NaN ~100 steps in; this gives margin
+LIVE_MAXITER = 200            # you reported NaN ~100 steps in; this gives margin
 LIVE_PRINT_EVERY = 5          # spectrum check is a forward-only extra pass, so not every step
 LIVE_HISTORY_KEEP = 10        # how many recent steps to show in the snapshot dump
 LIVE_USE_OPTIMAL_ORDERING = False  # skip the slow qubit-ordering search; doesn't change the physics
-LIVE_NORMALIZE_STATE = False  # A/B toggle: run the same LIVE_SEED once False, once True
-LIVE_SEED = None  # None -> draw + log a fresh seed each run (was previously always the case,
+LIVE_NORMALIZE_STATE = True  # A/B toggle: run the same LIVE_SEED once False, once True
+LIVE_TRIALS = 5  # match the original run's trial count. IMPORTANT: with trials=1, the
+# same LIVE_SEED only reproduces trial 0's initial params (jax.random.uniform(key,
+# shape=(1,N)) is bit-identical to row 0 of shape=(trials,N) for the same key -- verified
+# empirically in this repo's venv -- but trial 0 isn't necessarily the trial that NaN'd.
+# find_gs.py's tqdm postfix reports jnp.min(value) across all trials each step, and NaN
+# propagates through jnp.min, so "Current value: nan" in a job log just means *some*
+# trial went NaN, not which one. Keep trials=5 here so every trial from the original run
+# replays identically; the loop below reports which trial index(es) actually NaN.
+LIVE_SEED = 22405  # reproducing job 3606420 (logs/2026-08-13_17-01-43_not_normed_nr_3x3_bd64_3606420),
+# which NaN'd around step 20-21 of 1200. None -> draw + log a fresh seed each run (was previously always the case,
 # silently and unlogged -- ToricCodeAnsatz now logs "parameter init seed: N" on construction).
 # Once a run reproduces a NaN, set LIVE_SEED = N (that exact value) here to replay the identical
 # initialization deterministically instead of hoping to get unlucky again.
@@ -429,7 +438,7 @@ def section4_live_training_diagnostic():
     ansatz = ToricCodeAnsatz(
         Lx=LIVE_LX, Ly=LIVE_LY, nlayers=LIVE_NLAYERS,
         howoften_toreset=LIVE_HOWOFTEN_TORESET, reset_layers=LIVE_RESET_LAYERS,
-        trials=1, bond_dim=LIVE_BOND_DIM, use_optimal_ordering=LIVE_USE_OPTIMAL_ORDERING,
+        trials=LIVE_TRIALS, bond_dim=LIVE_BOND_DIM, use_optimal_ordering=LIVE_USE_OPTIMAL_ORDERING,
         normalize_state=LIVE_NORMALIZE_STATE,
         seed=LIVE_SEED,
     )
@@ -445,7 +454,7 @@ def section4_live_training_diagnostic():
 
     def _print_step(r, extra=""):
         print(f"  step {r['step']:4d}: energy={r['energy']:.6f}  grad_norm={r['grad_norm']:.4e}  "
-              f"energy_nan={r['energy_nan']}  grad_nan={r['grad_nan']}  "
+              f"energy_nan={r['energy_nan']}  grad_nan={r['grad_nan']}  nan_trials={r['nan_trials']}  "
               f"tensor_nan={r['tensor_nan']}  max_tied_multiplicity={r['max_multiplicity']}  "
               f"min_gap={_fmt_gap(r['min_gap'])}{extra}")
         if r["center_tensor"] is not None:
@@ -469,8 +478,9 @@ def section4_live_training_diagnostic():
             for cut_idx, s in enumerate(spectra):
                 print(f"    cut {cut_idx}: {np.array2string(np.asarray(s), precision=6)}")
         if reset_slice is not None:
-            thetas = np.asarray(params[0])[reset_slice]
-            print(f"\n  reset thetas: {thetas}")
+            report_trial = history[-1]["nan_trials"][0] if history and history[-1]["nan_trials"] else 0
+            thetas = np.asarray(params[report_trial])[reset_slice]
+            print(f"\n  reset thetas (trial {report_trial}): {thetas}")
             print(f"  |theta - pi/2| per reset: {np.abs(thetas - np.pi / 2)}")
 
     for step in range(LIVE_MAXITER):
@@ -481,10 +491,17 @@ def section4_live_training_diagnostic():
         grad_nan = bool(np.isnan(grad_np).any())
         grad_norm = float(np.linalg.norm(grad_np))
 
+        # Which trial(s) -- out of LIVE_TRIALS independent starts sharing this one
+        # LIVE_SEED -- actually went NaN. Defaults to trial 0 for the periodic
+        # (non-NaN) diagnostic checks below; only meaningful once nan_trials is non-empty.
+        nan_trials = np.where(np.isnan(value_np) | np.isnan(grad_np).any(axis=-1))[0]
+        trial_idx = int(nan_trials[0]) if len(nan_trials) else 0
+
         record = dict(step=step, energy=float(np.real(value_np).mean()), grad_norm=grad_norm,
                       energy_nan=energy_nan, grad_nan=grad_nan, tensor_nan=None,
                       max_multiplicity=None, min_gap=None, center_position=None,
-                      center_tensor=None, singular_values=None)
+                      center_tensor=None, singular_values=None,
+                      nan_trials=nan_trials.tolist())
 
         # The forward-only spectrum diagnostic (building qc + a per-cut numpy
         # SVD) is itself capable of failing outright -- job 3594457 hit
@@ -497,7 +514,7 @@ def section4_live_training_diagnostic():
         spectra = None
         if do_check:
             try:
-                qc = ansatz._circuit(params[0])
+                qc = ansatz._circuit(params[trial_idx])
                 if ansatz.normalize_state:
                     # Match energy_from_params(): inspect the same normalized
                     # MPS that is passed to the Hamiltonian expectations.
