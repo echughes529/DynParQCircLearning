@@ -53,15 +53,6 @@ echo "=================================="
 export DPQC_OUTDIR="$RUN_DIR/plots"
 mkdir -p "$DPQC_OUTDIR"
 
-# --- Memory + GPU monitor (logs every 30s in the background) ---
-(
-  while true; do
-    echo "[memlog $(date +%H:%M:%S)] RAM: $(free -h | awk '/^Mem:/{print "used="$3" avail="$7}') | GPU: $(nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader 2>/dev/null)"
-    sleep 30
-  done
-) >> "$RUN_DIR/memlog.txt" &
-MEMLOG_PID=$!
-
 # --- Run code ---
 python -m src.examples.plot_training_curve_tc
 EXIT_CODE=$?
