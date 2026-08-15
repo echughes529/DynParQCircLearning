@@ -260,8 +260,10 @@ settings. Every step the gradient is computed **both** ways — through the spli
 with the splitter off — and compared.
 
 ```
-DONE mode=c64 seed=0: steps with rel-error>1e-2: 58/800; worst rel error 1.322e+04;
+DONE mode=c64 seed=0: steps with rel-error>1e-2:  58/800; worst rel error 1.322e+04;
                       first non-finite step None; final Emin -7.310377
+DONE mode=c64 seed=1: steps with rel-error>1e-2: 126/800; worst rel error 1.075e+03;
+                      first non-finite step None; final Emin -7.310410
 ```
 
 Worst offenders:
@@ -571,3 +573,84 @@ and Fix 1 (removing the splitter) becomes the mandatory fix rather than merely t
 | `t23_epsilon_and_perf.py` | the split is 1.6× slower |
 | `t26_misc_checks.py` | exact reference energies; split lossiness table |
 | `t27_hash_eq.py` | ansatz `__hash__` collisions |
+
+---
+
+## 11. Findings outside the SVD path (added after the first pass)
+
+### 11.1 `perform_noisy_simulations=True` applies no noise at all
+
+`find_gs.py:169-173` calls
+
+```python
+noise_conf.add_noise("depolarizing", [self.noise_rate*0.1],
+                     ["x","y","z","h","s","t","rx","ry","rz"])
+```
+
+but the signature is `NoiseConf.add_noise(gate_name, kraus, qubit=None)`. All three
+arguments are in the wrong slot, and `add_noise` does `zip(qubit, kraus)` internally, so
+a one-element `kraus` truncates the nine-element gate list to one. Measured
+(`t30_noise_config.py`):
+
+```
+repo's config  -> 2 rule(s): [('depolarizing', 'x'), ('depolarizing', 'cnot')]
+correct config -> 7 rule(s): ['rx', 'ry', 'rz', 'x', 'y', 'z', 'h']
+
+noiseless <Z0 Z1>            : -0.0120958686
+repo's noisy path (nmc=200)  : -0.0120958686
+|difference|                 :  0.000e+00      <-- bitwise identical
+
+density-matrix sim with real depolarizing noise : -0.0083966851  (shift 3.70e-03)
+```
+
+tensorcircuit warns `gate name depolarizing not in the common gate set that tc supported`
+on every call — that warning is the bug announcing itself. Net effect: the run costs
+`nmc` times more and returns the **noiseless** answer. `src/examples/find_gs_tc_example.py`
+uses this path with `noise_rate=5e-2, number_of_shots=2000`.
+
+### 11.2 The per-step seeds do nothing
+
+`optimize()` builds `all_seeds` and threads a seed through `energy_with_seed`, but
+`K.set_random_state(seed)` is a Python-level side effect that runs once at trace time, and
+the channel randomness inside `expectation_noisfy` comes from `backend.implicit_randu`,
+not from the `status` argument the code passes (that one is the *shot* randomness).
+Measured (`t28_pipeline_consistency.py`, part d): five different seeds give **bitwise
+identical** energies and gradients. Even with 11.1 fixed, every optimisation step would
+sample the same noise realisation.
+
+### 11.3 What a corrupted gradient does to Adam — measured, in two phases
+
+`t29_adam_after_spike.py`. One parameter, honest gradient 0.1, `lr=1e-2`, one corrupted
+step of size `G` of the wrong sign:
+
+| G | \|step\| at t+1 | \|step\| at t+100 | \|step\| at t+350 | steps to recover | progress lost by step 60000 |
+|---:|---:|---:|---:|---:|---:|
+| 1e+02 | 6.4e-03 | 1.2e-04 | 2.2e-04 | 5,810 | 56 of 600 rad |
+| 1e+04 | 6.4e-03 | 9.1e-07 | 2.2e-06 | 15,012 | 147 of 600 rad |
+| 1e+06 | 6.4e-03 | 3.2e-07 | 2.2e-08 | 24,218 | 239 of 600 rad |
+| 2.3e+07 | 6.4e-03 | 3.3e-07 | 9.4e-10 | 30,486 | 302 of 600 rad |
+| 1e+08 | 6.4e-03 | 3.3e-07 | 2.2e-10 | 33,424 | 331 of 600 rad |
+
+Adam is scale invariant, so the spike does **not** produce a giant jump — `m` and `v` are
+inflated together. Instead:
+
+* **Phase 1**, about `ln(G/g)/ln(1/0.9)` ≈ 110–200 steps: `m` is still dominated by the
+  spike, so the parameter marches at roughly the full learning rate in whatever
+  (meaningless) direction the corrupted gradient pointed.
+* **Phase 2**, about `ln(1e-3 G²/g²)/ln(1/0.999)` ≈ 16,000–34,000 steps: `m` has decayed
+  back to the honest gradient but `v` has not, so the effective step collapses by a factor
+  of ~10⁻⁸ and the parameter is **frozen**.
+
+With `maxiter=501`, a single spike anywhere in the first half of the run ends that
+parameter's optimisation permanently. No NaN required.
+
+### 11.4 Checks that came back clean
+
+`t28_pipeline_consistency.py`:
+
+* `sparse=True` and `sparse=False` agree to float32 roundoff (≤1.2e-07) on all three
+  toric-code ansatz branches — the two Hamiltonian construction routes are consistent.
+* `self.nancillas` matches the circuit width for all four branches (unitary, dynamic,
+  prob-resets, small-angle) at 3×3.
+* The `claws[i::4][j]` reordering is a genuine permutation for 2×2, 3×2, 3×3, 4×3 and 4×4
+  — no gates silently dropped or duplicated.
