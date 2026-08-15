@@ -23,8 +23,9 @@ degeneracies sit at every multiple of π/2 in the `rxx`/`ryy`/`rzz` angles — w
 precisely where a *stabilizer* target state like the toric-code ground state drags the
 optimiser. In a real 800-step run, **58 steps out of 800 had gradient errors above 1 %,
 with a worst case 13 000× larger than the true gradient**, and every single one coincided
-with a two-qubit angle sitting within ~10⁻⁶ of a multiple of π/2. In float64 the same
-computation is correct to 10⁻¹⁶.
+with a two-qubit angle sitting within ~10⁻⁶ of a multiple of π/2. The same run in
+complex128: **0 out of 800**. With every two-qubit angle parked on a Clifford value the
+gradient reaches **10⁸** (true value ~0.8), and at θ exactly 0 it is a hard **NaN**.
 
 The split buys you nothing: it makes the gradient evaluation **1.6× slower** and the XLA
 compile **much** longer (§7).
@@ -239,9 +240,12 @@ land on (`t19_jit_effect.py`):
   |θ−π| ≤ 1e-7 — a 40 % relative error, permanently, in a whole neighbourhood.
 * **θ = 0 exactly**: **hard NaN**. `tn.split_node` computes `sqrt_s = backend.sqrt(s)`
   and `s₁ = 2|sin(θ/2)|` is exactly 0 there; the VJP of `sqrt` at 0 is `0.5/√0 = inf`.
-  Scanned 400 161 angles (`t20_zero_singular_values.py`): `s₁ == 0` happens **only** at
-  θ = 0.0 exactly, in both precisions. Adam will essentially never land there, so this is
-  a real but improbable route.
+  In the *real* toric-code circuit with every two-qubit angle set to 0
+  (`t25_many_degeneracies.py`): `E = 0.181426` (finite, forward is fine) but
+  **48 of 165 gradient components are NaN**. Scanned 400 161 angles
+  (`t20_zero_singular_values.py`): `s₁ == 0` happens **only** at θ = 0.0 exactly, in both
+  precisions — so this is a real but improbable route under Adam, which will not land on
+  exactly 0.0.
 * **`max_singular_values=4` ("just don't truncate") is much worse, not better**: it keeps
   the two zero singular values and differentiates `sqrt(0)`, giving **NaN almost
   everywhere**. Do not "fix" it this way.
@@ -284,23 +288,66 @@ Note also that the corrupted steps become *dense* once the run converges (Emin p
 −7.3103 against an exact −7.310437) — which is exactly the "it starts fine and degrades"
 signature, because convergence means angles piling onto Clifford values.
 
+### 5.1 The same run in complex128
+
+Identical script, identical seed, one line changed (`MODE=c128`):
+
+```
+DONE mode=c128 seed=0: steps with rel-error>1e-2: 0/800; worst rel error 3.320e-08;
+                       first non-finite step None; final Emin -7.310424
+```
+
+**Zero corrupted steps out of 800**, worst relative error 3.3e-08 (against 1.3e+04), and it
+also lands closer to the exact ground state (−7.310424 vs −7.310377, exact −7.310437).
+
+### 5.2 How big does it get when many angles are Clifford at once?
+
+`t25_many_degeneracies.py`, real toric-code circuit (3×2, 9 qubits, 48 two-qubit angles),
+complex64, setting the first *k* two-qubit angles to exactly π/2:
+
+| # angles at π/2 | E (split) | E (reference) | max\|g\| split | max\|g\| true | # components > 1e3 |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 0.210642 | 0.210643 | 5.14e-01 | 5.14e-01 | 0 |
+| 1 (`rxx`) | 0.230269 | 0.230270 | 5.18e-01 | 5.18e-01 | 0 |
+| 2 (`+ryy`) | 0.095572 | 0.095572 | 5.18e-01 | 5.18e-01 | 0 |
+| 4 (`+rzz`) | 0.457283 | 0.457284 | **3.23e+07** | 5.05e-01 | 1 |
+| 8 | 0.631377 | 0.631379 | **4.94e+07** | 5.75e-01 | 2 |
+| 16 | 0.642329 | 0.642331 | **4.00e+07** | 8.35e-01 | 5 |
+| 24 | −0.180541 | −0.180541 | **5.75e+07** | 8.61e-01 | 8 |
+| 32 | −0.451496 | −0.451498 | **8.35e+07** | 9.07e-01 | 10 |
+| 48 (all) | −1.643542 | −1.643550 | **1.03e+08** | 8.26e-01 | 16 |
+
+Three things to read off this:
+
+1. The **energies are correct throughout** (agreement to ~1e-6) — the damage is purely in
+   the gradient.
+2. The blow-up is triggered by the **`rzz`** angles specifically (`k=1,2` are the `rxx` and
+   `ryy` of the first Cartan block and are clean; `k=4` is the first one that includes an
+   `rzz`). The number of corrupted components tracks the number of `rzz` gates sitting on
+   the degeneracy.
+3. The magnitude grows **additively, not multiplicatively**, saturating around 10⁸ — each
+   gate's blown-up cotangent terminates at its own gate matrix and does not propagate
+   through the network. That bounds how bad a single step can be, and is why §6 says what
+   it says.
+
 ---
 
 ## 6. What I could **not** prove
 
 **I did not reproduce a literal NaN energy in a full training run.** 800 steps × 12 trials
 at 11 qubits gave 58 catastrophically corrupted steps but zero non-finite values. Being
-precise about why: `optax.adam` normalises by `√v̂`, so even a 10⁷ gradient produces a
-step of order `lr`; to get NaN out of Adam in float64 you need `|g| ≳ 1e154` so that
-`g²` overflows, and a single `_safe_reciprocal` peak (1.58e7 × O(cotangent)) does not
-compound across gates — each gate's blown-up cotangent terminates at its own gate matrix.
+precise about why: `optax.adam` normalises by `√v̂`, so even a 10⁸ gradient produces a
+step of order `lr`; to get NaN out of Adam in float64 you need `|g| ≳ 1e154` so that `g²`
+overflows. §5.2 shows the spikes saturate around 10⁸ and grow additively rather than
+multiplicatively, so a single step cannot get you there.
 
 So the honest statement is: **this mechanism definitely destroys your gradients, and it is
 overwhelmingly the most likely cause of your training pathology, but I have proven
-gradient corruption up to 10⁴–10⁷×, not the final step to NaN.** Your 3×3 run has ~10×
+gradient corruption up to 10⁴–10⁸×, plus a hard NaN whenever a two-qubit angle is exactly
+0 — not the final step from "10⁸" to "NaN energy" under Adam.** Your 3×3 run has ~12×
 more two-qubit angles per trial (576 vs 48) and a larger Hamiltonian norm, so both the
-frequency and the magnitude of the spikes will be larger there. §9 tells you how to
-confirm the last step on your own machine.
+frequency and the magnitude of the spikes will be larger there. §9 tells you how to close
+that last gap on your own machine.
 
 Other candidates that I could not test here and that you should rule out (§9):
 
@@ -374,8 +421,11 @@ must come *after* the `tc.set_backend` call and can replace the manual
 import order — `import tensorcircuit` resets x64 to `False`.
 
 Measured effect (§4.1): worst-case error drops from 2.3e7 to 3.6e-1, and the dangerous
-window narrows from |θ−π/2| ≲ 1e-4 to ≲ 1e-10. You are also currently reporting toric-code
-energies of order −12 computed entirely in float32; double precision is worth it on its own.
+window narrows from |θ−π/2| ≲ 1e-4 to ≲ 1e-10. On the full 800-step training run (§5.1) it
+takes the corrupted-step count from **58/800 to 0/800** and the worst relative gradient
+error from **1.3e+04 to 3.3e-08**, while converging closer to the exact ground state. You
+are also currently reporting toric-code energies of order −12 computed entirely in float32;
+double precision is worth it on its own.
 
 Fixes 1 and 2 are independent and you want both. Fix 1 removes the mechanism; Fix 2 makes
 the rest of the pipeline trustworthy and protects you if a splitter reappears.
@@ -476,7 +526,8 @@ Run your 3×3 case three times, changing exactly one thing:
 2. `split_conf = None` in `generate_ansatz.py` → expect no NaN;
 3. `tc.set_dtype("complex128")` after `tc.set_backend` → expect no NaN.
 
-If (2) and (3) both survive and (1) dies, you are done.
+If (2) and (3) both survive and (1) dies, you are done. (On the 3×2 lattice I ran
+exactly this comparison for (1) vs (3) — 58/800 corrupted steps vs 0/800, §5.1.)
 
 **T4 — check whether GPU cuSOLVER adds its own failure (this is the one I can't do).**
 ```python
@@ -513,7 +564,8 @@ and Fix 1 (removing the splitter) becomes the mandatory fix rather than merely t
 | `t17_rzz_degeneracy_scan.py` | **the main result**: error vs distance to degeneracy, c64 vs c128 |
 | `t19_jit_effect.py` | jit makes the blow-up ~10⁸× worse |
 | `t20_zero_singular_values.py` | `s₁ == 0` happens only at θ = 0.0 exactly |
-| `t21_train_track.py` | **real training run**: 58/800 corrupted steps, 13 000× worst case |
+| `t21_train_track.py` | **real training run**: 58/800 corrupted steps in complex64, 0/800 in complex128 |
+| `t25_many_degeneracies.py` | magnitude vs number of simultaneously-Clifford angles (up to 1.03e8); NaN at θ=0 |
 | `t22_degeneracies_and_fixes.py` | the θ→π degeneracy; `max_sv=4` is worse; the fixes work |
 | `t24_epsilon_sweep.py` | ε is the knob; instrumented backward pass under jit |
 | `t23_epsilon_and_perf.py` | the split is 1.6× slower |

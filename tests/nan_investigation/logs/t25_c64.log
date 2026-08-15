@@ -1,0 +1,19 @@
+dtype=complex64 qubits=9 npar=165 two-qubit angles=48
+compiled in 330s
+
+ #angles at pi/2      E_split        E_ref   max|g_split|   max|g_ref|   max abs err  #g comps >1e3
+               0     0.210642     0.210643     5.1431e-01   5.1431e-01    2.5034e-06              0
+               1     0.230269     0.230270     5.1840e-01   5.1840e-01    2.3842e-06              0
+               2     0.095572     0.095572     5.1784e-01   5.1784e-01    2.2054e-06              0
+               4     0.457283     0.457284     3.2292e+07   5.0454e-01    3.2292e+07              1
+               8     0.631377     0.631379     4.9351e+07   5.7457e-01    4.9351e+07              2
+              16     0.642329     0.642331     3.9963e+07   8.3539e-01    3.9963e+07              5
+              24    -0.180541    -0.180541     5.7507e+07   8.6082e-01    5.7507e+07              8
+              32    -0.451496    -0.451498     8.3496e+07   9.0666e-01    8.3496e+07             10
+              48    -1.643542    -1.643550     1.0274e+08   8.2586e-01    1.0274e+08             16
+
+same, but all two-qubit angles at 0 (the other Clifford value):
+   E=0.181426  max|g|=nan  non-finite grad components: 48/165
+
+same, but all two-qubit angles at pi:
+   E=0.181426  max|g|=7.8919e-01  max abs err vs ref=1.0365e-01  non-finite: 0/165
