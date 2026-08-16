@@ -53,10 +53,8 @@ Subclasses implement `_circuit(params)`, `_hamiltonian_terms()`, and `get_full_h
 ## How to run
 
 ```bash
-# Activate the venv
-source eddie_py312_venv/bin/activate
-# or on scratch:
-source /exports/eddie/scratch/s1931382/scratch_dpqc_venv/bin/activate
+# Activate the venv (same one every run_*.sh job script uses)
+source /home/s1931382/dpqc_venv/bin/activate
 
 # Run examples directly
 python -m src.examples.find_gs_tc_example
