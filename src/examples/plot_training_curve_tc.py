@@ -779,14 +779,14 @@ def plotting_gradient_norms(results):
 # ---------------------------------------------------------------------------------------------------------------------
 # Global simulation parameters 
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 3
-Ly = 3
+Lx = 2
+Ly = 2
 h_list = [0] 
 
 nlayers = 2
 howoften_tosave = 10
-trials = 3
-maxiter = 1000
+trials = 1
+maxiter = 1500
 howoften_toreset = 7
 unitary = True
 sparse = False
@@ -795,7 +795,7 @@ noise_rate = 5e-2
 number_of_shots = 500 
 use_prob_resets_ansatz = True
 use_mps = True
-bond_dim = 64
+bond_dim = 70
 use_optimal_ordering = True
 
 # Choose which ansatz layers get probabilistic resets.
@@ -816,7 +816,7 @@ singular_value_ntrials = 5
 # single trial at every save step during training. Only correct for reset_layers
 # equal to the last layer (see ToricCodeAnsatz.reset_param_slice); set trials=1
 # when using this for a clean, cheap diagnostic run.
-track_singular_values_per_step = False
+track_singular_values_per_step = True
 singular_value_trial_idx = 0
 singular_value_threshold = 1e-4  # used by plot_singular_values_per_step to count "active" singular values per cut
 

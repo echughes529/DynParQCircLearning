@@ -23,6 +23,63 @@ jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_
 K = tc.set_backend("jax")
 tc.set_dtype("complex128")
 
+# Optional override of the Lorentzian-broadening epsilon in TensorCircuit's
+# SVD backward pass (tensorcircuit/backends/jax_ops.py::_safe_reciprocal,
+# stock value 1e-15). jaxsvd_bwd amplifies cotangents by up to 1/(2*sqrt(eps))
+# whenever a kept singular value or a pair gap |s_i^2 - s_j^2| sits near
+# sqrt(eps), so raising eps caps the blowup that near-degenerate spectra feed
+# into the gradient (see src/diagnostics/svd_eps_blowup_training.py and
+# nan_capture_bd96.py). jaxsvd_bwd looks the name up in its module globals on
+# every call, so rebinding it here -- before anything is traced -- changes the
+# compiled rule; eps is a constant in the traced HLO, so the persistent
+# compilation cache above keys patched and unpatched programs separately.
+# jaxeigh_bwd shares this helper and is patched along with it; nothing in the
+# MPS split path calls eigh.
+_svd_bwd_eps = os.environ.get("DPQC_SVD_BWD_EPS")
+if _svd_bwd_eps:
+    from tensorcircuit.backends import jax_ops as _tc_jax_ops
+
+    _svd_bwd_eps_val = float(_svd_bwd_eps)
+
+    def _patched_safe_reciprocal(x, epsilon=_svd_bwd_eps_val):
+        return x / (x * x + epsilon)
+
+    _tc_jax_ops._safe_reciprocal = _patched_safe_reciprocal
+    print(f"[generate_ansatz] SVD-backward epsilon patched: 1e-15 -> {_svd_bwd_eps_val:g} "
+          f"(DPQC_SVD_BWD_EPS)")
+
+# Optional override of the SVD forward kernel. Under vmap every MPS split's
+# jnp.linalg.svd becomes a batched cuSOLVER call, and the batched Jacobi kernel
+# deterministically NaNs single batch elements on the rank-deficient matrices
+# this ansatz produces (captured live at 3x3/bd=70 step 6 and 3x3/bd=96; see
+# src/diagnostics/nan_capture_bd96.py + fwd_svd_algorithm_test.py). Forcing the
+# QR kernel fixed the NaN, matched unbatched values to 13 digits, cut the worst
+# batch gradient norm 38.7 -> 2.5, and ran 3.3x FASTER (17.7 vs 58.4 s/step at
+# 3x3/bd=70/20 trials on an A40). _svd_jax re-imports `adaware_svd_jit` from
+# jax_ops on every call, so rebinding the module attribute redirects every
+# split; the custom VJP backward (jaxsvd_bwd) is reused unchanged, so
+# DPQC_SVD_BWD_EPS composes with this hook.
+_svd_fwd_alg = os.environ.get("DPQC_SVD_FWD_ALG")
+if _svd_fwd_alg:
+    if _svd_fwd_alg.lower() != "qr":
+        raise ValueError(f"DPQC_SVD_FWD_ALG={_svd_fwd_alg!r}: only 'qr' is supported")
+    from jax.lax.linalg import svd as _lax_svd, SvdAlgorithm as _SvdAlgorithm
+    from tensorcircuit.backends import jax_ops as _tc_jax_ops
+
+    @jax.custom_vjp
+    def _qr_adaware_svd(A):
+        u, s, vh = _lax_svd(A, full_matrices=False, algorithm=_SvdAlgorithm.QR)
+        return (u, s, vh)
+
+    def _qr_adaware_svd_fwd(A):
+        u, s, v = _qr_adaware_svd(A)
+        return (u, s, v), (u, s, v)
+
+    _qr_adaware_svd.defvjp(_qr_adaware_svd_fwd, _tc_jax_ops.jaxsvd_bwd)
+    _tc_jax_ops.adaware_svd_jit = jax.jit(_qr_adaware_svd)
+    print("[generate_ansatz] SVD forward kernel patched: batched-Jacobi -> QR "
+          "(DPQC_SVD_FWD_ALG)")
+
 from qiskit.circuit import QuantumCircuit, ParameterVector, QuantumRegister, ClassicalRegister
 from src.utilities.generate_toric_code_hamiltonian import *
 

@@ -292,8 +292,14 @@ class VariationalAnsatz(abc.ABC):
                     value, gradient = self._cost_vvag(params, seeds)
                 else:
                     value, gradient = self._cost_vvag(params)
-                
-                updates, opt_state = optimizer.update(gradient, opt_state)
+
+                # A single non-finite gradient permanently poisons that trial's
+                # Adam moment buffers, so feed Adam zeros for affected trials
+                # and freeze their parameters for this step instead.
+                finite_trials = jnp.isfinite(gradient).all(axis=-1) & jnp.isfinite(value)
+                safe_gradient = jnp.where(finite_trials[:, None], gradient, 0.0)
+                updates, opt_state = optimizer.update(safe_gradient, opt_state)
+                updates = jnp.where(finite_trials[:, None], updates, 0.0)
                 params = optax.apply_updates(params, updates)
                 
                 if i % self.howoften_tosave == 0:
@@ -340,7 +346,11 @@ class VariationalAnsatz(abc.ABC):
                                 print(f"step {i}: no reset_param_slice on this ansatz ({type(self).__name__}); skipping reset-theta print.")
 
                     counter += 1
-                    pbar.set_postfix_str(f"Current value: {str(jnp.min(value))}")
+                    n_bad = int(self.trials - jnp.sum(finite_trials))
+                    postfix = f"Current value: {str(jnp.nanmin(jnp.where(finite_trials, value, jnp.nan)))}"
+                    if n_bad:
+                        postfix += f" ({n_bad} non-finite trial{'s' if n_bad > 1 else ''} frozen)"
+                    pbar.set_postfix_str(postfix)
 
         # Optionally save results
         if save_results:
