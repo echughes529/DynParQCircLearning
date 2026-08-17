@@ -445,7 +445,7 @@ def section4_live_training_diagnostic():
     params = jnp.array(ansatz.initparams)
     optimizer = optax.adam(learning_rate=ansatz.learning_rate)
     opt_state = optimizer.init(params)
-    reset_slice = ansatz.reset_param_slice
+    reset_slice = ansatz.reset_param_indices
 
     history = []  # rolling window of recent per-step summaries
 
@@ -587,7 +587,7 @@ def section5_real_ansatz_scaling_sweep():
                 Lx=Lx, Ly=Ly, nlayers=1, reset_layers=[0], trials=1,
                 bond_dim=bond_dim, use_optimal_ordering=False,
             )
-            params = ansatz.initparams.at[:, ansatz.reset_param_slice].set(jnp.pi / 2.0)
+            params = ansatz.initparams.at[:, ansatz.reset_param_indices].set(jnp.pi / 2.0)
 
             val, grad = ansatz._cost_vvag(params)
             has_nan = bool(np.isnan(np.asarray(grad)).any())

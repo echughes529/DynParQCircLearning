@@ -270,23 +270,52 @@ class ToricCodeAnsatz(VariationalAnsatz):
         return qu.PauliStringSum2COO(strings, weights)
         
     @property
-    def reset_param_slice(self):
+    def reset_param_indices(self):
         """
-        Slice of the flat parameter vector holding the probabilistic-reset
+        Indices of the flat parameter vector holding the probabilistic-reset
         theta parameters, or None if this ansatz has no reset parameters.
 
-        Layout (only valid when use_prob_resets_ansatz is True):
-            [0, n_two_qubit)                        -> Cartan-block params
-            [n_two_qubit, n_two_qubit+total_resets)  -> reset-theta params
-            [n_two_qubit+total_resets, nparams)      -> final single-qubit params
+        The circuit builders walk a single paramindex layer by layer (a layer's
+        Cartan blocks, then that layer's reset thetas, then the next layer), so
+        the reset thetas are *interleaved* with the Cartan parameters whenever
+        resets are not confined to the final layer. This property mirrors that
+        walk; do not assume the returned indices are contiguous.
         """
         if not getattr(self, "use_prob_resets_ansatz", False):
             return None
-        total_resets = getattr(self, "total_resets", 0)
-        if not total_resets:
+        if not getattr(self, "total_resets", 0):
             return None
-        n_two_qubit = self.nplaquettes * 3 * 9 * self.nlayers
-        return slice(n_two_qubit, n_two_qubit + total_resets)
+        nclaw_per_layer = self.nplaquettes * 3 * 9
+        indices = []
+        paramindex = 0
+        for layer in range(self.nlayers):
+            paramindex += nclaw_per_layer
+            if layer in self.active_reset_layers:
+                indices.extend(range(paramindex, paramindex + self.nresets_per_layer))
+                paramindex += self.nresets_per_layer
+        return np.asarray(indices, dtype=int)
+
+    @property
+    def reset_param_slice(self):
+        """
+        Deprecated contiguous-slice view of reset_param_indices.
+
+        Only well defined when every reset sits in the final layer, since the
+        builders interleave reset thetas between layers otherwise. Raises rather
+        than silently returning a slice over Cartan parameters.
+        """
+        indices = self.reset_param_indices
+        if indices is None:
+            return None
+        start, stop = int(indices[0]), int(indices[-1]) + 1
+        if stop - start != len(indices):
+            raise ValueError(
+                "reset_param_slice is not well defined for "
+                f"active_reset_layers={self.active_reset_layers} with "
+                f"nlayers={self.nlayers}: the reset thetas are interleaved with "
+                "the Cartan parameters. Use reset_param_indices instead."
+            )
+        return slice(start, stop)
 
     def _initialise_parameters(self):
         """Initialize parameters with optional small angle range."""
@@ -315,16 +344,16 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
         # If using probabilistic resets, overwrite the reset parameters
         # with values in [0, pi/2]
-        if self.use_prob_resets_ansatz and self.reset_param_slice is not None:
-            n_reset = self.total_resets
+        reset_indices = self.reset_param_indices
+        if self.use_prob_resets_ansatz and reset_indices is not None:
             reset_vals = jax.random.uniform(
                 key_reset,
-                shape=[self.trials, n_reset],
+                shape=[self.trials, len(reset_indices)],
                 minval= jnp.pi/2.0 - 0.2,
                 maxval= jnp.pi/2.0- 0.1
             )
 
-            params = params.at[:, self.reset_param_slice].set(reset_vals)
+            params = params.at[:, reset_indices].set(reset_vals)
 
         return params
 

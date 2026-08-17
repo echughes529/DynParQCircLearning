@@ -337,13 +337,13 @@ class VariationalAnsatz(abc.ABC):
                             )
                             print(f"step {i} (trial {singular_value_trial_idx}): singular values -- {spectra_str}")
 
-                            reset_slice = getattr(self, "reset_param_slice", None)
-                            if reset_slice is not None:
-                                reset_thetas = np.asarray(params[singular_value_trial_idx])[reset_slice]
+                            reset_indices = getattr(self, "reset_param_indices", None)
+                            if reset_indices is not None:
+                                reset_thetas = np.asarray(params[singular_value_trial_idx])[reset_indices]
                                 self.reset_thetas_per_step[counter] = reset_thetas
                                 print(f"step {i} (trial {singular_value_trial_idx}): reset thetas = {reset_thetas}")
                             elif counter == 0:
-                                print(f"step {i}: no reset_param_slice on this ansatz ({type(self).__name__}); skipping reset-theta print.")
+                                print(f"step {i}: no reset_param_indices on this ansatz ({type(self).__name__}); skipping reset-theta print.")
 
                     counter += 1
                     n_bad = int(self.trials - jnp.sum(finite_trials))
