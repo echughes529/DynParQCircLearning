@@ -378,6 +378,157 @@ def _decomposed_ccx(qc, c0, c1, target):
     qc.td(c1)
     qc.cnot(c0, c1)
 
+# Probability floor for the trajectory-reset sampler. Used as an ADDITIVE floor
+# on log-probabilities rather than via jnp.clip: clip has zero gradient outside
+# its range, which would silently kill the reset-theta score term exactly at
+# theta -> 0 or pi where a reset becomes (almost) certain or impossible.
+_TRAJ_PROB_FLOOR = 1e-12
+
+
+def _sampled_reset(qc, k, theta, u, force=None):
+    """Ancilla-free trajectory reset of MPS chain site ``k``. Mutates ``qc``.
+
+    The purified reset in construct_dyn_circuit_toriccodelattice_prob_resets
+    spends two ancillas per event to represent the reset channel
+    ``rho -> (1-p) rho + p (reset-to-|0>)(rho)``, with ``p = sin^2(theta/2)``,
+    coherently. Here we instead sample ONE branch of that channel (a quantum
+    trajectory), so no ancillas are needed and the chain stays at nq sites.
+
+    Two facts make the ancillas removable. First, the coin ancilla's marginal is
+    ``cos^2(theta/2)`` no matter what the system state is, so it is a classical
+    random variable and needs no qubit. Second, once the coin is classical the
+    remaining operation is just "measure site k in Z, keep the sampled outcome,
+    relabel to |0>". That leaves a 3-way categorical over
+
+        j=0  no reset,          probability 1 - p
+        j=1  reset, measured 0, probability p * q0
+        j=2  reset, measured 1, probability p * q1
+
+    (the fourth purified outcome, coin=0 with an excited sink, has identically
+    zero amplitude). Returns log P(sampled outcome), which the caller sums into
+    ``log_w`` and feeds to the DiCE factor in
+    VariationalAnsatz.dice_energy_from_params -- WITHOUT that factor the
+    gradient with respect to theta is identically zero, since theta only enters
+    through the branch probabilities and not through any branch's state.
+
+    Args:
+        qc: tc.MPSCircuit being built.
+        k: chain position of the system qubit to reset.
+        theta: reset angle; p = sin^2(theta/2).
+        u: scalar uniform in [0, 1) supplying the randomness. Passed in rather
+           than drawn here so the whole forward pass stays a pure function of
+           its arguments under jit/vmap, and so tests can hold it fixed.
+        force: debug hook. When set to 0, 1 or 2, takes that branch instead of
+           sampling (log_w still accumulates the forced branch's log-prob), so
+           tests can enumerate all branches exactly instead of relying on Monte
+           Carlo. See src/diagnostics/test_trajectory_resets.py.
+    """
+    # Moving the orthogonality center to k makes every other tensor an isometry,
+    # so site k alone carries the Born probabilities of qubit k.
+    qc.position(k)
+    T = qc._mps.tensors[k]                                    # (Dl, 2, Dr)
+
+    weights = K.real(K.einsum("iaj,iaj->a", T, K.conj(T)))
+    # Dividing by the sum is what makes these true probabilities even when
+    # truncation has drifted the state norm off 1. Skipping it would leak
+    # d log||psi||^2 into log_w, i.e. straight into the gradient.
+    q = weights / K.sum(weights)
+
+    p = K.sin(theta / 2.0) ** 2
+    probs = K.stack([1.0 - p, p * q[0], p * q[1]])
+
+    if force is None:
+        # probability_sample is cumsum + searchsorted only: no Python branching
+        # on the outcome, so it survives jit and vmap.
+        j = K.probability_sample(1, probs, status=K.reshape(1.0 - u, [1]))[0]
+        onehot3 = K.cast(K.onehot(K.cast(j, "int32"), 3), tc.rdtypestr)
+    else:
+        onehot3 = K.convert_to_tensor(np.eye(3, dtype=np.float64)[int(force)])
+        onehot3 = K.cast(onehot3, tc.rdtypestr)
+
+    log_w = K.log(K.sum(onehot3 * probs) + _TRAJ_PROB_FLOOR)
+
+    did_reset = onehot3[1] + onehot3[2]              # exactly 0.0 or 1.0
+    onehot_b = K.stack([onehot3[1], onehot3[2]])     # one-hot over the measured bit
+    projected = K.einsum("iaj,a->ij", T, K.cast(onehot_b, tc.dtypestr))
+    q_b = K.sum(onehot_b * q)
+    # Both lanes are always evaluated under vmap, so in the j=0 lane q_b is
+    # exactly 0 and an unguarded divide gives 0/0 = nan -- which survives
+    # multiplication by did_reset=0, since nan * 0 is nan.
+    q_safe = jnp.where(q_b > _TRAJ_PROB_FLOOR, q_b, 1.0)
+    projected = projected / K.cast(K.sqrt(q_safe), tc.dtypestr)
+    # Write the projected block into physical slot 0 and zero slot 1: the qubit
+    # is now |0>, while its correlations with the rest of the chain are intact.
+    reset_tensor = jnp.stack([projected, jnp.zeros_like(projected)], axis=1)
+
+    # A one-hot blend, not lax.cond: under vmap JAX turns lax.cond into "run
+    # both branches then select", so branching buys nothing. did_reset is
+    # exactly 0.0 or 1.0, so one lane survives bit-for-bit. Same idiom as
+    # tc's AbstractCircuit.select_gate.
+    c = K.cast(did_reset, tc.dtypestr)
+    qc._mps.tensors[k] = (1.0 - c) * T + c * reset_tensor
+    return log_w
+
+
+def construct_traj_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
+                                                        n_mps_qubits, mps_claws,
+                                                        mps_reset_qubits, active_reset_layers,
+                                                        sys_mps_positions, status,
+                                                        split_conf=None,
+                                                        normalize_state=True,
+                                                        cartan_mode="fused",
+                                                        force=None):
+    """Trajectory-reset counterpart of construct_dyn_circuit_toriccodelattice_prob_resets.
+
+    Same parameter layout and consumption order (one theta per reset event), so
+    the same params vector drives both builders and their results can be
+    compared directly. Differences: mps_reset_qubits holds bare system chain
+    positions rather than (sys, coin, sink) triples, n_mps_qubits is just nq,
+    and there is no toffoli_mode since no Toffolis are applied.
+
+    Returns (qc, log_w) where log_w is the summed log-probability of every
+    sampled branch. See _sampled_reset for why log_w matters.
+
+    Args:
+        status: one uniform in [0, 1) per reset event, in circuit-application
+            order (indexable by the same reset_idx as mps_reset_qubits).
+        force: None, or a list of forced branch indices (one per reset event)
+            for exact enumeration in tests.
+    """
+    if split_conf is None:
+        split_conf = make_split_conf()
+    if len(params) != nparams:
+        raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
+
+    qc = tc.MPSCircuit(n_mps_qubits, split=split_conf)
+    paramindex = 0
+    log_w = K.cast(K.convert_to_tensor(0.0), tc.rdtypestr)
+
+    nresets_per_layer = len(mps_reset_qubits) // len(active_reset_layers) if active_reset_layers else 0
+    reset_idx = 0
+
+    for l in range(nlayers):
+        qc, paramindex = onesetofunitaries(qc, mps_claws, params, paramindex, cartan_mode=cartan_mode)
+
+        if l in active_reset_layers:
+            for _ in range(nresets_per_layer):
+                log_w = log_w + _sampled_reset(
+                    qc,
+                    mps_reset_qubits[reset_idx],
+                    params[paramindex],
+                    status[reset_idx],
+                    force=None if force is None else force[reset_idx],
+                )
+                paramindex += 1
+                reset_idx += 1
+        _normalize_mps_if_requested(qc, normalize_state)
+
+    qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,
+                                               qubit_indices=sys_mps_positions)
+    _normalize_mps_if_requested(qc, normalize_state)
+    return qc, log_w
+
+
 def construct_dyn_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                                                        n_mps_qubits, mps_claws,
                                                        mps_reset_qubits, active_reset_layers,

@@ -62,7 +62,17 @@ def _make_jit_helpers(ansatz: Any) -> Tuple[Callable, Callable]:
     """
     energy_fn = ansatz.energy_from_params
     perform_noisy_simulations = getattr(ansatz, "perform_noisy_simulations", False)
-    
+
+    if getattr(ansatz, "use_trajectory_resets", False):
+        # (params, status, baseline). All three MUST be passed positionally:
+        # K.vmap builds its in_axes from the positional arguments only, so a
+        # keyword argument would silently not be vectorised over trials.
+        traj_fn = ansatz.dice_energy_from_params
+        costs_vmapped = K.jit(K.vmap(traj_fn, vectorized_argnums=[0, 1, 2]))
+        cost_vvag = K.jit(K.vmap(K.value_and_grad(traj_fn, argnums=0),
+                                 vectorized_argnums=[0, 1, 2]))
+        return costs_vmapped, cost_vvag
+
     if perform_noisy_simulations:
         # For noisy simulations, we need to handle seeds
         def energy_with_seed(params, seed):
@@ -158,6 +168,70 @@ class VariationalAnsatz(abc.ABC):
         return jax.random.uniform(key, shape=[self.trials, self.nparams],
                                  minval=0, maxval=jnp.pi)
 
+    def _energy_of_circuit(self, qc) -> Any:
+        """Term-by-term Hamiltonian expectation on an already-built circuit."""
+        energy = 0.0
+        for ops, coeff in self._hamiltonian_terms():
+            energy += coeff * qc.expectation(*ops)
+        return K.real(energy)
+
+    def dice_energy_from_params(self, params, status, baseline) -> Any:
+        """Unbiased stochastic energy estimator for trajectory resets.
+
+        Sampling one branch of the reset channel makes the energy an unbiased
+        estimate of the exact channel energy, but plain backprop through a
+        sampled branch gives *exactly zero* gradient with respect to every reset
+        theta: theta only sets the branch probabilities, and the sampled
+        branch's normalised state does not contain theta at all. Autodiff
+        differentiates the branch that actually ran, finds no theta on that path,
+        and returns 0. The upstream (Cartan) gradients are biased for the same
+        reason -- they also move the measurement probabilities.
+
+        The missing piece is the score-function identity
+
+            d/dp E[X]  =  E[X * d/dp log P]
+
+        which we obtain without hand-deriving anything by multiplying the energy
+        by a "magic box" (the DiCE construction):
+
+            box = exp(log_w - stop_gradient(log_w))
+
+        stop_gradient passes its argument through unchanged but reports
+        derivative zero, so ``log_w - stop_gradient(log_w)`` is bitwise 0.0 and
+        box is exactly 1.0 -- the reported energy is untouched -- while
+        d(box) = d(log_w). Autodiff then yields
+
+            grad = grad(E_traj) + (E_traj - baseline) * grad(log_w)
+
+        i.e. the ordinary pathwise term plus the score term. Because log_w is a
+        sum over resets and d log(P1*P2) = d log P1 + d log P2, one box around
+        the total covers any number of sequential resets.
+
+        ``baseline`` is a control variate: E[grad log P] = 0, so subtracting a
+        trajectory-independent constant leaves the expectation unchanged while
+        shrinking the variance. It must be supplied as an argument -- reading it
+        off ``self`` inside this traced function would bake the first step's
+        value into the compiled program as a constant.
+        """
+        def one_trajectory(st):
+            qc, log_w = self._circuit_traj(params, st)
+            _normalize_mps_if_requested(qc, self.normalize_state)
+            return self._energy_of_circuit(qc), log_w
+
+        if self.n_trajectories == 1:
+            energy, log_w = one_trajectory(status[0])
+            box = K.exp(log_w - K.stop_gradient(log_w))
+            return box * (energy - baseline) + baseline
+
+        energies, log_ws = jax.vmap(one_trajectory)(status)
+        # Leave-one-out baseline: each sample is corrected by the mean of the
+        # others, so the baseline stays independent of the sample it corrects
+        # and the estimator remains unbiased.
+        total = K.stop_gradient(K.sum(energies))
+        loo = (total - K.stop_gradient(energies)) / (self.n_trajectories - 1)
+        box = K.exp(log_ws - K.stop_gradient(log_ws))
+        return K.mean(box * (energies - loo) + loo)
+
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
         qc = self._circuit(params, seed=seed)
@@ -171,12 +245,7 @@ class VariationalAnsatz(abc.ABC):
 
 
         if self.use_mps:
-            terms = self._hamiltonian_terms()
-            energy = 0.0
-            for ops, coeff in terms:
-                exp_val = qc.expectation(*ops)
-                energy += coeff * exp_val
-            return K.real(energy)
+            return self._energy_of_circuit(qc)
         elif self.sparse:
             if self.perform_noisy_simulations:
                 warnings.warn(
@@ -209,11 +278,8 @@ class VariationalAnsatz(abc.ABC):
                     )
                     energy += coeff * exp_val
             else:
-                # Noiseless simulation
-                for ops, coeff in terms:
-                    exp_val = qc.expectation(*ops)
-                    energy += coeff * exp_val
-            
+                return self._energy_of_circuit(qc)
+
             return K.real(energy)
 
     def purity_from_params(self, params):
@@ -221,6 +287,14 @@ class VariationalAnsatz(abc.ABC):
         Calculate purity.
         Override this method in subclasses for system-specific purity calculations.
         """
+        if getattr(self, "use_trajectory_resets", False):
+            raise NotImplementedError(
+                "purity_from_params is meaningless with use_trajectory_resets=True: "
+                "each trajectory is a pure state, so the ancilla-cut purity would "
+                "always read 1.0. The mixed state only exists as the ensemble over "
+                "trajectories; estimating Tr[rho^2] would need |<phi_1|phi_2>|^2 "
+                "averaged over independently sampled trajectory pairs."
+            )
         # This is a generic implementation that can be overridden
         if not hasattr(self, 'lattice'):
             raise NotImplementedError(
@@ -288,10 +362,32 @@ class VariationalAnsatz(abc.ABC):
         if self.perform_noisy_simulations:
             base_seed = 42
             all_seeds = jnp.arange(self.maxiter * self.trials).reshape(self.maxiter, self.trials) + base_seed
-        
+
+        use_traj = getattr(self, "use_trajectory_resets", False)
+        n_nonfinite_steps = 0
+        if use_traj:
+            traj_seed = self.traj_seed if self.traj_seed is not None else self.seed
+            print(f"[{type(self).__name__}] trajectory seed: {traj_seed} "
+                  f"({self.n_trajectories} trajector"
+                  f"{'y' if self.n_trajectories == 1 else 'ies'} per trial per step)")
+            traj_key = jax.random.PRNGKey(traj_seed)
+            status_shape = (self.trials, self.n_trajectories, self.total_resets)
+            # Prime the baseline with one forward pass. Starting it at zero would
+            # scale the score term by the full energy (~-13 at 3x3) for the first
+            # tens of steps, exactly while Adam is calibrating its moments.
+            traj_key, subkey = jax.random.split(traj_key)
+            baseline = self._costs_vmapped(
+                params, jax.random.uniform(subkey, status_shape), jnp.zeros(self.trials)
+            )
+
         with tqdm(range(self.maxiter), miniters=self.howoften_tosave, mininterval=1) as pbar:
             for i in pbar:
-                if self.perform_noisy_simulations:
+                if use_traj:
+                    traj_key, subkey = jax.random.split(traj_key)
+                    status = jax.random.uniform(subkey, status_shape)
+                    # Positional: K.vmap vectorises positional arguments only.
+                    value, gradient = self._cost_vvag(params, status, baseline)
+                elif self.perform_noisy_simulations:
                     seeds = all_seeds[i]
                     value, gradient = self._cost_vvag(params, seeds)
                 else:
@@ -305,7 +401,18 @@ class VariationalAnsatz(abc.ABC):
                 updates, opt_state = optimizer.update(safe_gradient, opt_state)
                 updates = jnp.where(finite_trials[:, None], updates, 0.0)
                 params = optax.apply_updates(params, updates)
-                
+
+                if use_traj:
+                    # Frozen trials keep their old baseline so a single bad step
+                    # cannot poison the control variate.
+                    baseline = jnp.where(
+                        finite_trials,
+                        self.baseline_beta * baseline + (1.0 - self.baseline_beta) * value,
+                        baseline,
+                    )
+                    if not bool(jnp.all(finite_trials)):
+                        n_nonfinite_steps += 1
+
                 if i % self.howoften_tosave == 0:
                     self.allenergies[:, counter] = value
 
@@ -355,6 +462,21 @@ class VariationalAnsatz(abc.ABC):
                     if n_bad:
                         postfix += f" ({n_bad} non-finite trial{'s' if n_bad > 1 else ''} frozen)"
                     pbar.set_postfix_str(postfix)
+
+        if use_traj:
+            self.n_nonfinite_steps = n_nonfinite_steps
+            if n_nonfinite_steps:
+                frac = n_nonfinite_steps / self.maxiter
+                msg = (f"{n_nonfinite_steps}/{self.maxiter} steps ({frac:.1%}) had at least "
+                       f"one non-finite trial, which optimize() silently freezes.")
+                if frac > 0.02:
+                    warnings.warn(
+                        msg + " Above a couple of percent this is a numerical fault rather"
+                              " than sampling noise -- check the reset sites and the"
+                              " SVD/QR configuration.",
+                        RuntimeWarning,
+                    )
+                print(f"[{type(self).__name__}] {msg}")
 
         # Optionally save results
         if save_results:

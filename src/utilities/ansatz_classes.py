@@ -20,6 +20,7 @@ from src.utilities.generate_ising_hamiltonian import OneDimTFIM
 from src.utilities.generate_ansatz import (
     construct_smallangle_init_toriccodelattice,
     construct_dyn_circuit_toriccodelattice_prob_resets,
+    construct_traj_circuit_toriccodelattice_prob_resets,
     construct_unitary_circuit_toriccodelattice,
     construct_dyn_circuit_toriccodelattice,
     get_nresets_per_layer_toriccode,
@@ -60,6 +61,17 @@ class ToricCodeAnsatz(VariationalAnsatz):
     cartan_mode: str = "fused"     # "separate" or "fused"
     toffoli_mode: str = "direct"  # "decomposed" or "direct"
 
+    # Trajectory (ancilla-free) resets. The purified default spends two ancillas
+    # per reset event, so the chain is nq + 2*total_resets sites (20 or 28 at 3x3
+    # for a 12-qubit system). Sampling one branch of the reset channel instead
+    # keeps the chain at exactly nq sites, at the cost of a stochastic -- but
+    # unbiased -- energy and gradient. See src/diagnostics/test_trajectory_resets.py
+    # for the equivalence proof against the purified path.
+    use_trajectory_resets: bool = False
+    n_trajectories: int = 1            # samples per trial per optimisation step
+    traj_seed: Optional[int] = None    # trajectory randomness; defaults to self.seed
+    baseline_beta: float = 0.9         # EMA decay of the score-term baseline
+
     def __post_init__(self):
         if self.cartan_mode not in ("separate", "fused"):
             raise ValueError(f"Unknown cartan_mode: {self.cartan_mode!r} (expected 'separate' or 'fused')")
@@ -94,7 +106,10 @@ class ToricCodeAnsatz(VariationalAnsatz):
                     )
 
             self.total_resets = self.nresets_per_layer * len(self.active_reset_layers)
-            self.nancillas = 2 * self.total_resets
+            # Trajectory resets measure and discard in place, so they need no
+            # ancillas at all; the purified path needs a coin and a sink each.
+            self.nancillas = 0 if self.use_trajectory_resets else 2 * self.total_resets
+            # Unchanged either way: one theta per reset event.
             self.nparams = (self.nplaquettes * 3 * 9 * self.nlayers +
                           self.total_resets + 3 * self.lattice.num_qubits)
 
@@ -137,6 +152,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
         reset_set = set(reset_qubits)
         n_reset_layers = len(self.active_reset_layers)
+        # Trajectory resets add no sites, so nothing has to be reserved in the
+        # chain and the search reduces to a pure claw-distance minimisation.
+        slots_per_reset_qubit = 0 if self.use_trajectory_resets else 2 * n_reset_layers
 
         claw_edges = toriccode.all_claws()
 
@@ -147,7 +165,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 s2m[sq] = pos
                 pos += 1
                 if sq in reset_set:
-                    pos += 2 * n_reset_layers
+                    pos += slots_per_reset_qubit
             return max(abs(s2m[a] - s2m[b]) for a, b in claw_edges)
 
         natural_order = list(range(nq))
@@ -183,7 +201,13 @@ class ToricCodeAnsatz(VariationalAnsatz):
         ancilla_mps_positions = []
         mps_reset_info = [None] * n_ancilla_pairs
 
-        if self.use_optimal_ordering:
+        if self.use_trajectory_resets:
+            # No ancillas: the chain is exactly the system qubits, in whichever
+            # order the (unpenalised) claw-distance search picked.
+            for pos, sq in enumerate(best_order):
+                sys_to_mps[sq] = pos
+            pos = nq
+        elif self.use_optimal_ordering:
             # Inline: each reset qubit's ancilla pair(s) sit immediately after it.
             pending_by_sq = {}
             for (_layer, sq), a_idx in ancilla_idx_of.items():
@@ -221,24 +245,39 @@ class ToricCodeAnsatz(VariationalAnsatz):
         claws = [claws[i::3][j] for i in range(3) for j in range(nplaq)]
         self.mps_claws = [(sys_to_mps[a], sys_to_mps[b]) for a, b in claws]
 
-        # Build reset triples in circuit-application order (layer by layer),
-        # looking each one up by its stable ancilla_idx.
-        self.mps_reset_qubits = [
-            mps_reset_info[ancilla_idx_of[(_layer, sq)]]
-            for _layer in self.active_reset_layers
-            for sq in reset_qubits
-        ]
+        # Reset targets in circuit-application order (layer by layer). Trajectory
+        # mode needs only the system chain position; the purified path needs the
+        # (sys, coin, sink) triple, looked up by its stable ancilla_idx.
+        if self.use_trajectory_resets:
+            self.mps_reset_qubits = [
+                sys_to_mps[sq]
+                for _layer in self.active_reset_layers
+                for sq in reset_qubits
+            ]
+        else:
+            self.mps_reset_qubits = [
+                mps_reset_info[ancilla_idx_of[(_layer, sq)]]
+                for _layer in self.active_reset_layers
+                for sq in reset_qubits
+            ]
 
         max_claw = max(abs(sys_to_mps[a] - sys_to_mps[b]) for a, b in claw_edges)
-        max_ccx = max((abs(s - p) for s, p, _ in mps_reset_info), default=0)
-        if self.use_optimal_ordering:
+        if self.use_trajectory_resets:
+            ordering_desc = (f"trajectory-reset ordering ({n_trials} random trials)"
+                             if self.use_optimal_ordering else
+                             "trajectory-reset natural ordering (no search)")
+        elif self.use_optimal_ordering:
             ordering_desc = f"optimised ordering ({n_trials} random trials)"
         else:
             ordering_desc = "natural ordering (no search, ancillas appended at end)"
         print(f"MPS {ordering_desc}: "
               f"{self.n_mps_qubits} qubits ({nq} system + {self.nancillas} ancilla)")
         print(f"  System qubit order: {best_order}")
-        print(f"  Max claw distance: {max_claw}, max CCX distance: {max_ccx}")
+        if self.use_trajectory_resets:
+            print(f"  Max claw distance: {max_claw}, reset sites: {self.mps_reset_qubits}")
+        else:
+            max_ccx = max((abs(s - p) for s, p, _ in mps_reset_info), default=0)
+            print(f"  Max claw distance: {max_claw}, max CCX distance: {max_ccx}")
         print(f"  sys_to_mps: {self.sys_to_mps}")
 
     def __hash__(self):
@@ -247,7 +286,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
                     self.trials, self.maxiter, self.howoften_tosave, self.learning_rate,
                     self.sparse, self.use_prob_resets_ansatz, self.prob_reset_direction,
                     reset_layers_key, self.use_mps, self.normalize_state, self.bond_dim,
-                    self.cartan_mode, self.toffoli_mode))
+                    self.cartan_mode, self.toffoli_mode,
+                    self.use_trajectory_resets, self.n_trajectories))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -364,6 +404,14 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf,
                 normalize_state=self.normalize_state,
             )
+        elif self.use_trajectory_resets:
+            # One trajectory needs randomness. Callers inside the optimisation
+            # loop go through _circuit_traj with an explicit status vector; the
+            # diagnostics that call _circuit(params) directly (bond dimensions,
+            # singular values) just want a representative state, so draw one.
+            status = np.random.default_rng().uniform(size=self.total_resets)
+            qc, _ = self._circuit_traj(params, jnp.asarray(status))
+            return qc
         elif self.use_prob_resets_ansatz:
             return construct_dyn_circuit_toriccodelattice_prob_resets(
                 params,
@@ -390,6 +438,34 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 split_conf=self.split_conf, normalize_state=self.normalize_state,
                 cartan_mode=self.cartan_mode,
             )
+
+    def _circuit_traj(self, params, status, force=None):
+        """Build one sampled trajectory. Returns (qc, log_w).
+
+        log_w is the summed log-probability of every branch this trajectory
+        took; VariationalAnsatz.dice_energy_from_params turns it into the score
+        term that makes the reset thetas differentiable at all.
+        """
+        if not self.use_trajectory_resets:
+            raise ValueError(
+                "_circuit_traj requires use_trajectory_resets=True; this ansatz "
+                "is configured for the purified (ancilla) reset path."
+            )
+        return construct_traj_circuit_toriccodelattice_prob_resets(
+            params,
+            nlayers=self.nlayers,
+            nparams=self.nparams,
+            n_mps_qubits=self.n_mps_qubits,
+            mps_claws=self.mps_claws,
+            mps_reset_qubits=self.mps_reset_qubits,
+            active_reset_layers=self.active_reset_layers,
+            sys_mps_positions=self.sys_mps_positions,
+            status=status,
+            split_conf=self.split_conf,
+            normalize_state=self.normalize_state,
+            cartan_mode=self.cartan_mode,
+            force=force,
+        )
 
     def _remap_qubit(self, logical_idx):
         """Map a logical system qubit index to its MPS chain position."""
