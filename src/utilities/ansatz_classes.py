@@ -468,14 +468,14 @@ class OneDBrickwork(VariationalAnsatz):
         self.fullham = self.lattice.tfi_hamiltonian_dense(0,False,False)
         return self.fullham
 
-    def _circuit(self, params,seeds=None):
+    def _circuit(self, params, seed=None):
         sc = self._build_scaffold()
         if self.unitary:
             qc = construct_unitary_circuit_brickwork(
                 params, sc, split_conf=self.split_conf,
                 normalize_state=self.normalize_state,
             )
-        # elif seeds is None:
+        # elif seed is None:
         #     qc = construct_dyn_circuit_brickwork_seeded(params,self.Lx,self.Ly,self.nlayers,self.howoften_toreset)
         else:
             qc = construct_dyn_circuit_brickwork(

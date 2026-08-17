@@ -119,8 +119,12 @@ class VariationalAnsatz(abc.ABC):
     _cost_vvag: Callable = field(init=False, repr=False)
 
     @abc.abstractmethod
-    def _circuit(self, params, *args):
-        """Construct a circuit with the provided params."""
+    def _circuit(self, params, *args, seed=None):
+        """Construct a circuit with the provided params.
+
+        ``seed`` is passed by keyword from energy_from_params, so every
+        implementation must accept it under that name.
+        """
         ...
 
     @abc.abstractmethod
@@ -156,7 +160,7 @@ class VariationalAnsatz(abc.ABC):
 
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
-        qc = self._circuit(params, seed)
+        qc = self._circuit(params, seed=seed)
 
         if self.normalize_state and not self.use_mps:
             raise ValueError("normalize_state=True is only supported with use_mps=True")
