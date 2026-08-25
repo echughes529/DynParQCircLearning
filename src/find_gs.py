@@ -6,7 +6,9 @@
 
 """Find ground state for a given Hamiltonian using the dynamic parameterized quantum circuit ansatz."""
 import abc
+import os
 import sys
+import time
 from functools import partial
 
 from scipy.optimize import minimize
@@ -325,7 +327,7 @@ class VariationalAnsatz(abc.ABC):
                  track_singular_values_per_step: bool = False, singular_value_trial_idx: int = 0):
         """
         Run optimization to find ground state.
-        
+
         Parameters:
         -----------
         save_results : bool
@@ -334,7 +336,7 @@ class VariationalAnsatz(abc.ABC):
             If True, track purity during optimization
         track_bond_dim : bool
             If True, track the maximum bond dimension for each trial during optimization.
-            
+
         Returns:
         --------
         tuple : (final_energies, final_parameters, all_energies, all_purities)
@@ -357,6 +359,14 @@ class VariationalAnsatz(abc.ABC):
         counter = 0
         optimizer = optax.adam(learning_rate=self.learning_rate)
         opt_state = optimizer.init(params)
+
+        # Wall-clock instrumentation. step_times[0] is dominated by JIT
+        # compilation; every later entry is a warm step. JAX dispatches
+        # asynchronously, so each step is blocked on below -- without that these
+        # numbers would measure queueing, not computation.
+        self.step_times = np.full(self.maxiter, np.nan)
+        self.device_str = str(jax.devices())
+        print(f"[{type(self).__name__}] jax devices: {self.device_str}")
 
         # Initialize random seeds for noisy simulations
         if self.perform_noisy_simulations:
@@ -382,6 +392,7 @@ class VariationalAnsatz(abc.ABC):
 
         with tqdm(range(self.maxiter), miniters=self.howoften_tosave, mininterval=1) as pbar:
             for i in pbar:
+                step_start = time.perf_counter()
                 if use_traj:
                     traj_key, subkey = jax.random.split(traj_key)
                     status = jax.random.uniform(subkey, status_shape)
@@ -401,6 +412,12 @@ class VariationalAnsatz(abc.ABC):
                 updates, opt_state = optimizer.update(safe_gradient, opt_state)
                 updates = jnp.where(finite_trials[:, None], updates, 0.0)
                 params = optax.apply_updates(params, updates)
+
+                # Force the asynchronously dispatched work to actually finish
+                # before the clock is read, otherwise every step but the last
+                # would appear nearly free.
+                params = jax.block_until_ready(params)
+                self.step_times[i] = time.perf_counter() - step_start
 
                 if use_traj:
                     # Frozen trials keep their old baseline so a single bad step
@@ -457,6 +474,7 @@ class VariationalAnsatz(abc.ABC):
                                 print(f"step {i}: no reset_param_indices on this ansatz ({type(self).__name__}); skipping reset-theta print.")
 
                     counter += 1
+                    self._write_checkpoint(i, counter, params)
                     n_bad = int(self.trials - jnp.sum(finite_trials))
                     postfix = f"Current value: {str(jnp.nanmin(jnp.where(finite_trials, value, jnp.nan)))}"
                     if n_bad:
@@ -483,6 +501,46 @@ class VariationalAnsatz(abc.ABC):
             self.save_results(value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_bond_dims)
 
         return value, params, self.allenergies, self.allpurities, self.allparams, self.allgrads, self.all_bond_dims, self.singular_values_per_step, self.reset_thetas_per_step
+
+    def _write_checkpoint(self, step, counter, params):
+        """Dump partial results at snapshot cadence.
+
+        save_results() only runs after the whole optimisation loop, so a job
+        killed at walltime saves nothing at all -- which has already cost several
+        multi-hour runs. This writes the same arrays incrementally. The write is
+        to a temporary file followed by os.replace, which is atomic on POSIX, so
+        a kill mid-write leaves the previous checkpoint intact rather than a
+        half-written file.
+
+        Set DPQC_CHECKPOINT to choose the path; it otherwise lands next to the
+        run's plots (DPQC_OUTDIR) or in tmp/.
+        """
+        path = os.environ.get("DPQC_CHECKPOINT")
+        if path is None:
+            outdir = os.environ.get("DPQC_OUTDIR", "tmp")
+            path = os.path.join(outdir, "checkpoint.npz")
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            tmp_path = path + ".partial"
+            # Pass an open file object, not a name: given a name, savez appends
+            # ".npz" to it, and os.replace would then look for a file that isn't
+            # there.
+            with open(tmp_path, "wb") as fh:
+                np.savez_compressed(
+                    fh,
+                    step=step,
+                    nsnapshots_filled=counter,
+                    params=np.asarray(params),
+                    all_energies=self.allenergies,
+                    all_params=self.allparams,
+                    all_bond_dims=self.all_bond_dims,
+                    step_times=self.step_times,
+                    **(getattr(self, "mpo_track", {}) or {}),
+                )
+            os.replace(tmp_path, path)
+        except Exception as exc:  # never let checkpointing kill a run
+            if counter == 1:
+                print(f"[{type(self).__name__}] checkpoint write failed ({exc}); continuing without checkpoints.")
 
     def save_results(self, final_energies, final_parameters, all_energies, all_purities, all_params, all_grads, all_bond_dims,
                      save_individual: bool = True):
@@ -526,9 +584,19 @@ class VariationalAnsatz(abc.ABC):
             'all_bond_dims' : np.array(all_bond_dims),
             'min_energy': float(np.min(final_energies)),
             'mean_energy': float(np.mean(final_energies)),
-            'std_energy': float(np.std(final_energies))
+            'std_energy': float(np.std(final_energies)),
+            # Cost accounting. step_times[0] carries JIT compilation, so the
+            # warm cost is the median over the rest.
+            'step_times': np.asarray(getattr(self, 'step_times', [])),
+            'compile_seconds': float(getattr(self, 'step_times', [np.nan])[0]),
+            'warm_step_seconds': float(np.nanmedian(getattr(self, 'step_times', [np.nan])[1:])
+                                       if len(getattr(self, 'step_times', [])) > 1 else np.nan),
+            'total_optimize_seconds': float(np.nansum(getattr(self, 'step_times', []))),
+            'ordering_search_seconds': float(getattr(self, 'ordering_search_seconds', np.nan)),
+            'device': str(getattr(self, 'device_str', 'unknown')),
+            'n_nonfinite_steps': int(getattr(self, 'n_nonfinite_steps', 0)),
         }
-        
+
         # Save using the result saver
         master_file, individual_file = saver.save_run(
             settings=self,

@@ -67,7 +67,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     # keeps the chain at exactly nq sites, at the cost of a stochastic -- but
     # unbiased -- energy and gradient. See src/diagnostics/test_trajectory_resets.py
     # for the equivalence proof against the purified path.
-    use_trajectory_resets: bool = False
+    use_trajectory_resets: bool = True
     n_trajectories: int = 1            # samples per trial per optimisation step
     traj_seed: Optional[int] = None    # trajectory randomness; defaults to self.seed
     baseline_beta: float = 0.9         # EMA decay of the score-term baseline
@@ -139,7 +139,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
         qubits, at the end of the chain.
         """
         import random as _rng
+        import time as _time
 
+        _build_start = _time.perf_counter()
         nq = self.lattice.num_qubits
         toriccode = self.lattice
 
@@ -261,6 +263,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 for sq in reset_qubits
             ]
 
+        self.ordering_search_seconds = _time.perf_counter() - _build_start
+
         max_claw = max(abs(sys_to_mps[a] - sys_to_mps[b]) for a, b in claw_edges)
         if self.use_trajectory_resets:
             ordering_desc = (f"trajectory-reset ordering ({n_trials} random trials)"
@@ -271,7 +275,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
         else:
             ordering_desc = "natural ordering (no search, ancillas appended at end)"
         print(f"MPS {ordering_desc}: "
-              f"{self.n_mps_qubits} qubits ({nq} system + {self.nancillas} ancilla)")
+              f"{self.n_mps_qubits} qubits ({nq} system + {self.nancillas} ancilla) "
+              f"[{self.ordering_search_seconds:.1f}s]")
         print(f"  System qubit order: {best_order}")
         if self.use_trajectory_resets:
             print(f"  Max claw distance: {max_claw}, reset sites: {self.mps_reset_qubits}")
