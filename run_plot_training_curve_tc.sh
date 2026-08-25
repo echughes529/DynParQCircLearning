@@ -53,6 +53,35 @@ echo "=================================="
 export DPQC_OUTDIR="$RUN_DIR/plots"
 mkdir -p "$DPQC_OUTDIR"
 
+# --- Fail fast if the GPU we asked for is not usable ---
+# Some nodes (crannog05 reliably, crannog01 intermittently) have an A40 present
+# but cuInit fails, and JAX prints a warning and silently falls back to CPU. The
+# job then runs 50-100x slower, still exits 0, and produces timings that look
+# like real measurements. An 18-hour run wasted this way is worse than a job
+# that dies in ten seconds. Set DPQC_REQUIRE_GPU=0 to allow a CPU run.
+if [ "${DPQC_REQUIRE_GPU:-1}" = "1" ]; then
+  if ! python -c "import jax,sys; sys.exit(0 if any(d.platform=='gpu' for d in jax.devices()) else 1)" 2>/dev/null; then
+    echo "FATAL: no usable GPU on $(hostname) -- JAX fell back to CPU. Aborting rather than"
+    echo "       producing a misleading timing. Resubmit, or set DPQC_REQUIRE_GPU=0 to allow CPU."
+    exit 75
+  fi
+fi
+
+# --- Memory sampler ---
+# The final snapshot below has always referenced $MEMLOG_PID, but nothing ever
+# started a logger, so peak memory was never actually recorded. Sample both host
+# RAM and GPU memory every 30s so peak usage is a reportable number.
+(
+  while true; do
+    ts=$(date +%H:%M:%S)
+    ram=$(free -m | awk '/^Mem:/{print $3}')
+    gpu=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1)
+    echo "${ts} ram_mb=${ram} gpu_mb=${gpu:-NA}"
+    sleep 30
+  done
+) >> "$RUN_DIR/memlog.txt" 2>/dev/null &
+MEMLOG_PID=$!
+
 # --- Run code ---
 python -m src.examples.plot_training_curve_tc
 EXIT_CODE=$?
