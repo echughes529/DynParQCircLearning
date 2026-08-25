@@ -5,6 +5,7 @@ ctg_cache/*
 jax_cache/*
 tmp/*
 logs/*
+results/*
 docs/*
 .whitesource
 outputs/*
