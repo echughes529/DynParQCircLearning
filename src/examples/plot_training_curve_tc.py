@@ -189,6 +189,7 @@ def save_singular_values_csv(results, csv_path):
 def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10, maxiter=201, howoften_tosave=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets_ansatz=False,
                    reset_layers=None, use_mps=True, bond_dim=None, use_optimal_ordering=True,
+                   use_trajectory_resets=True, n_trajectories=1, traj_seed=None, seed=None,
                    ):
 
     if nlayers_current is None:
@@ -786,54 +787,30 @@ def plotting_gradient_norms(results):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Global simulation parameters 
+# Global simulation parameters
+#
+# These now live in src/examples/run_config.py so they can be set per-job at submit time.
+# sbatch reads .py files when the job STARTS, not when you submit, so editing parameters
+# between submissions is unsafe -- see the docstring in run_config.py for the full story.
+#
+# Edit the defaults in run_config.py, or override any of them per-job with ./submit.sh:
+#
+#     ./submit.sh                                 # job name: 3x3_bd64_r1
+#     ./submit.sh LX=4 LY=4 BOND_DIM=32           # job name: 4x4_bd32_r1
+#     ./submit.sh LX=4 LY=4 TAG=traj_pls_wrk      # job name: 4x4_bd64_r1_traj_pls_wrk
+#     ./submit.sh NAME=whatever_i_like            # job name: whatever_i_like
+#
+# The `import *` below pulls in every parameter defined in run_config.py:
+#   Lx, Ly, h_list, nlayers, howoften_tosave, trials, maxiter, howoften_toreset, unitary,
+#   sparse, perform_noisy_simulations, noise_rate, number_of_shots,
+#   use_prob_resets_ansatz, use_mps, bond_dim, use_optimal_ordering, reset_layers,
+#   use_trajectory_resets, n_trajectories, traj_seed, seed,
+#   track_grads, track_params, track_bond_dim, track_singular_values,
+#   singular_value_ntrials, track_singular_values_per_step, singular_value_trial_idx,
+#   singular_value_threshold, plot_final_energies, save_final_energies,
+#   save_training_history, save_singular_values_per_step
 # ---------------------------------------------------------------------------------------------------------------------
-Lx = 2
-Ly = 2
-h_list = [0] 
-
-nlayers = 2
-howoften_tosave = 10
-trials = 1
-maxiter = 1500
-howoften_toreset = 7
-unitary = True
-sparse = False
-perform_noisy_simulations = False
-noise_rate = 5e-2
-number_of_shots = 500 
-use_prob_resets_ansatz = True
-use_mps = True
-bond_dim = 70
-use_optimal_ordering = True
-
-# Choose which ansatz layers get probabilistic resets.
-# Use None to apply resets on every layer, preserving the old behaviour.
-# Layer indexing is zero-based, so [0] means only the first layer.
-reset_layers = [1]
-
-track_grads = False
-track_params = False
-track_bond_dim = False
-track_singular_values = False
-# Preferred: average singular values over all trials converged within 0.1% of
-# the reference energy density. This is only the fallback trial count, used
-# when no reference is defined for (Lx, Ly) or zero trials converge.
-singular_value_ntrials = 5
-
-# Track the per-cut singular-value spectrum and print reset-theta values for a
-# single trial at every save step during training. Only correct for reset_layers
-# equal to the last layer (see ToricCodeAnsatz.reset_param_slice); set trials=1
-# when using this for a clean, cheap diagnostic run.
-track_singular_values_per_step = True
-singular_value_trial_idx = 0
-singular_value_threshold = 1e-4  # used by plot_singular_values_per_step to count "active" singular values per cut
-
-plot_final_energies = True
-save_final_energies = False
-save_training_history = False
-save_singular_values_per_step = False
-# ---------------------------------------------------------------------------------------------------------------------
+from src.examples.run_config import *
 
 
 tc_ = ToricCode(Lx, Ly)
@@ -852,12 +829,19 @@ if __name__ == "__main__":
     # ------- Printing Parameters ---------
     print("===== Python run parameters =====")
     print(f"Lx={Lx}, Ly={Ly}")
+    print(f"h_list={h_list}")
     print(f"nlayers={nlayers}")
     print(f"howoften_toreset={howoften_toreset}")
     print(f"trials={trials}, maxiter={maxiter}")
+    print(f"howoften_tosave={howoften_tosave}")
     print(f"outdir={outdir}")
     print(f"use_mps={use_mps}, bond_dim={bond_dim}")
+    print(f"use_optimal_ordering={use_optimal_ordering}")
+    print(f"use_prob_resets_ansatz={use_prob_resets_ansatz}")
     print(f"reset_layers={reset_layers}")
+    print(f"use_trajectory_resets={use_trajectory_resets}, n_trajectories={n_trajectories}")
+    print(f"seed={seed}, traj_seed={traj_seed}")
+    print(f"unitary={unitary}, sparse={sparse}")
     print("=================================")
 
     results = running_for_hs(Lx=Lx, 
@@ -876,6 +860,10 @@ if __name__ == "__main__":
                              use_mps=use_mps,
                              bond_dim=bond_dim,
                              use_optimal_ordering=use_optimal_ordering,
+                             use_trajectory_resets=use_trajectory_resets,
+                             n_trajectories=n_trajectories,
+                             traj_seed=traj_seed,
+                             seed=seed,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain
