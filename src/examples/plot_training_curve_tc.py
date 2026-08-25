@@ -216,6 +216,15 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             use_mps=use_mps,
             bond_dim=bond_dim,
             use_optimal_ordering=use_optimal_ordering,
+            use_trajectory_resets=use_trajectory_resets,
+            n_trajectories=n_trajectories,
+            traj_seed=traj_seed,
+            seed=seed,
+            mpo_bond_dim=mpo_bond_dim,
+            mpo_observables=mpo_observables,
+            mpo_trials=mpo_trials,
+            mpo_every_nsaves=mpo_every_nsaves,
+            mpo_include_hamiltonian=mpo_include_hamiltonian,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims, sv_per_step, reset_thetas_per_step = ansatz.optimize(
