@@ -227,6 +227,10 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims, sv_per_step, reset_thetas_per_step = ansatz.optimize(
+            # Without this the whole run produces no HDF5 at all, and every
+            # timing and memory field optimize() computes is discarded -- the
+            # only surviving artifacts were checkpoint.npz and the PNGs.
+            save_results=True,
             track_params=track_params,
             track_grads=track_grads,
             track_bond_dim=track_bond_dim,
@@ -499,15 +503,23 @@ def plotting_thetas(results):
 # Reference ground-state energy density per lattice size
 # ------------------------------------------------------------------------------------------------------------
 def get_reference_energy_density(Lx, Ly):
-    """Hardcoded reference ground-state energy density for supported lattice sizes, else None."""
-    if Lx == 2 and Ly == 2:
-        return -5/4  # for 2x2
-    if Lx == 3:
-        if Ly == 2:
-            return -8/7  # for 3x2
-        if Ly == 3:
-            return -13/12  # for 3x3
-    return None
+    """Reference ground-state energy density at h=0, from the lattice alone.
+
+    At zero field every star and every plaquette operator can be satisfied
+    simultaneously, so E0 = -(#stars + #plaquettes) = -(Lx*Ly + (Lx-1)*(Ly-1))
+    on nq = 2*Lx*Ly - Lx - Ly qubits.
+
+    This reproduces the values that used to be hardcoded here (-5/4 at 2x2,
+    -8/7 at 3x2, -13/12 at 3x3) and extends to any lattice. The table version
+    returned None off its three entries, which silently removed the reference
+    line from every plot and suppressed the "N/M trials within 0.1%" line that
+    the run collector scrapes -- so a 4x3 run looked like it had simply not
+    converged.
+    """
+    n_qubits = 2 * Lx * Ly - Lx - Ly
+    if n_qubits <= 0:
+        return None
+    return -(Lx * Ly + (Lx - 1) * (Ly - 1)) / n_qubits
 
 
 # ------------------------------------------------------------------------------------------------------------

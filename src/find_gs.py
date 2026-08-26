@@ -7,6 +7,7 @@
 """Find ground state for a given Hamiltonian using the dynamic parameterized quantum circuit ansatz."""
 import abc
 import os
+import resource
 import sys
 import time
 from functools import partial
@@ -51,6 +52,41 @@ import optax
 from src.utilities.generate_ansatz import *
 from src.utilities.generate_ansatz import _normalize_mps_if_requested
 from src.utilities.result_saver import ResultSaver
+
+def _device_memory_bytes() -> Tuple[float, float]:
+    """(current, peak) accelerator bytes in use, or (nan, nan) off-accelerator.
+
+    Read from the XLA allocator rather than from nvidia-smi. The two do not
+    measure the same thing: nvidia-smi reports what the process has *reserved*
+    from the driver, which under the default XLA_PYTHON_CLIENT_PREALLOCATE=true
+    is a flat 75% of the card no matter how much is actually live. These figures
+    are the allocator's own accounting, so they stay honest either way, and they
+    are per-process rather than per-node -- `free -m` in the job script cannot
+    tell two arms sharing a node apart.
+
+    `peak_bytes_in_use` is a high-water mark: it only ever rises, so the last
+    sample of a run is the peak of the whole run.
+    """
+    try:
+        stats = jax.devices()[0].memory_stats()
+    except Exception:
+        return float("nan"), float("nan")
+    if not stats:                       # CPU backend returns None
+        return float("nan"), float("nan")
+    return (float(stats.get("bytes_in_use", float("nan"))),
+            float(stats.get("peak_bytes_in_use", float("nan"))))
+
+
+def _host_peak_rss_bytes() -> float:
+    """Peak resident set size of this process. ru_maxrss is KiB on Linux."""
+    return float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * 1024.0
+
+
+def _nanmax_or_nan(values) -> float:
+    """np.nanmax without the all-NaN warning, which is the CPU-backend case."""
+    values = np.asarray(values, dtype=float)
+    return float(np.nanmax(values)) if np.any(np.isfinite(values)) else float("nan")
+
 
 def _make_jit_helpers(ansatz: Any) -> Tuple[Callable, Callable]:
     """
@@ -159,6 +195,22 @@ class VariationalAnsatz(abc.ABC):
         
         self.initparams = self._initialise_parameters()
         self._costs_vmapped, self._cost_vvag = _make_jit_helpers(self)
+
+    @property
+    def reset_mode(self) -> str:
+        """Which of the three reset implementations this ansatz uses.
+
+        One canonical label -- "pur", "traj" or "enum" -- so that checkpoints,
+        HDF5 records and the log-scraping in collect_runs all agree. Previously
+        each consumer re-derived it from the two booleans, and any consumer that
+        only knew about `use_trajectory_resets` silently labelled enumerated
+        runs as purified.
+        """
+        if getattr(self, "use_enumerated_resets", False):
+            return "enum"
+        if getattr(self, "use_trajectory_resets", False):
+            return "traj"
+        return "pur"
 
     def _initialise_parameters(self):
         """Initialize random parameters for all trials."""
@@ -446,6 +498,24 @@ class VariationalAnsatz(abc.ABC):
         self.device_str = str(jax.devices())
         print(f"[{type(self).__name__}] jax devices: {self.device_str}")
 
+        # Memory instrumentation, sampled at snapshot cadence. Three arrays
+        # because they answer different questions: `live` is the steady-state
+        # working set, `peak` is the high-water mark including compilation and
+        # backward-pass transients, and `rss` catches host-side growth that the
+        # device allocator cannot see.
+        self.gpu_live_bytes = np.full(nsnapshots, np.nan)
+        self.gpu_peak_bytes = np.full(nsnapshots, np.nan)
+        self.host_rss_bytes = np.full(nsnapshots, np.nan)
+        _live0, _peak0 = _device_memory_bytes()
+        if np.isnan(_peak0):
+            print(f"[{type(self).__name__}] device memory_stats unavailable; "
+                  f"GPU peak columns will be NaN (host RSS still recorded).")
+        else:
+            print(f"[{type(self).__name__}] device memory before step 0: "
+                  f"live {_live0 / 2**30:.2f} GiB, peak {_peak0 / 2**30:.2f} GiB "
+                  f"(XLA_PYTHON_CLIENT_PREALLOCATE="
+                  f"{os.environ.get('XLA_PYTHON_CLIENT_PREALLOCATE', 'unset')})")
+
         # Initialize random seeds for noisy simulations
         if self.perform_noisy_simulations:
             base_seed = 42
@@ -497,6 +567,16 @@ class VariationalAnsatz(abc.ABC):
                 params = jax.block_until_ready(params)
                 self.step_times[i] = time.perf_counter() - step_start
 
+                # Counted for every arm, not just the trajectory one: NaN
+                # robustness is a property of the MPS numerics (the forward SVD
+                # kernel), not of the reset estimator, so all three arms are
+                # exposed to it and all three need the number. Kept live rather
+                # than summarised after the loop so a checkpoint from a job that
+                # dies at walltime still carries it.
+                if not bool(jnp.all(finite_trials)):
+                    n_nonfinite_steps += 1
+                self.n_nonfinite_steps = n_nonfinite_steps
+
                 if use_traj:
                     # Frozen trials keep their old baseline so a single bad step
                     # cannot poison the control variate.
@@ -505,11 +585,15 @@ class VariationalAnsatz(abc.ABC):
                         self.baseline_beta * baseline + (1.0 - self.baseline_beta) * value,
                         baseline,
                     )
-                    if not bool(jnp.all(finite_trials)):
-                        n_nonfinite_steps += 1
 
                 if i % self.howoften_tosave == 0:
                     self.allenergies[:, counter] = value
+
+                    # Sampled before the tracking blocks below, which build extra
+                    # un-jitted circuits and would otherwise be charged to the
+                    # training step's memory rather than to the diagnostics.
+                    self.gpu_live_bytes[counter], self.gpu_peak_bytes[counter] = _device_memory_bytes()
+                    self.host_rss_bytes[counter] = _host_peak_rss_bytes()
 
                     if track_purity:
                         self.allpurities[:, counter] = purity_vec(self, params)
@@ -559,20 +643,31 @@ class VariationalAnsatz(abc.ABC):
                         postfix += f" ({n_bad} non-finite trial{'s' if n_bad > 1 else ''} frozen)"
                     pbar.set_postfix_str(postfix)
 
-        if use_traj:
-            self.n_nonfinite_steps = n_nonfinite_steps
-            if n_nonfinite_steps:
-                frac = n_nonfinite_steps / self.maxiter
-                msg = (f"{n_nonfinite_steps}/{self.maxiter} steps ({frac:.1%}) had at least "
-                       f"one non-finite trial, which optimize() silently freezes.")
-                if frac > 0.02:
-                    warnings.warn(
-                        msg + " Above a couple of percent this is a numerical fault rather"
-                              " than sampling noise -- check the reset sites and the"
-                              " SVD/QR configuration.",
-                        RuntimeWarning,
-                    )
-                print(f"[{type(self).__name__}] {msg}")
+        self.n_nonfinite_steps = n_nonfinite_steps
+        if n_nonfinite_steps:
+            frac = n_nonfinite_steps / self.maxiter
+            msg = (f"{n_nonfinite_steps}/{self.maxiter} steps ({frac:.1%}) had at least "
+                   f"one non-finite trial, which optimize() silently freezes.")
+            if frac > 0.02:
+                warnings.warn(
+                    msg + " Above a couple of percent this is a numerical fault rather"
+                          " than sampling noise -- check the reset sites and the"
+                          " SVD/QR configuration.",
+                    RuntimeWarning,
+                )
+            print(f"[{type(self).__name__}] {msg}")
+
+        # Final memory reading. peak_bytes_in_use is a high-water mark, so this
+        # last sample is the peak of the entire run -- including anything the
+        # snapshot cadence stepped over.
+        final_live, final_peak = _device_memory_bytes()
+        final_rss = _host_peak_rss_bytes()
+        self.peak_gpu_bytes = _nanmax_or_nan(np.append(self.gpu_peak_bytes, final_peak))
+        self.peak_host_rss_bytes = _nanmax_or_nan(np.append(self.host_rss_bytes, final_rss))
+        print(f"[{type(self).__name__}] peak memory: "
+              f"GPU {self.peak_gpu_bytes / 2**30:.2f} GiB "
+              f"(live at exit {final_live / 2**30:.2f} GiB), "
+              f"host RSS {self.peak_host_rss_bytes / 2**30:.2f} GiB")
 
         # Optionally save results
         if save_results:
@@ -613,6 +708,24 @@ class VariationalAnsatz(abc.ABC):
                     all_params=self.allparams,
                     all_bond_dims=self.all_bond_dims,
                     step_times=self.step_times,
+                    # Cost and memory accounting.
+                    gpu_live_bytes=getattr(self, "gpu_live_bytes", np.array([])),
+                    gpu_peak_bytes=getattr(self, "gpu_peak_bytes", np.array([])),
+                    host_rss_bytes=getattr(self, "host_rss_bytes", np.array([])),
+                    # Run identity, so a checkpoint is self-describing. Without
+                    # these the only way to tell which arm and which chain length
+                    # produced a checkpoint is to regex the job's stdout, and
+                    # stdout is not guaranteed to survive alongside it.
+                    reset_mode=self.reset_mode,
+                    device=str(getattr(self, "device_str", "unknown")),
+                    n_nonfinite_steps=int(getattr(self, "n_nonfinite_steps", 0)),
+                    n_mps_qubits=int(getattr(self, "n_mps_qubits", -1)),
+                    total_resets=int(getattr(self, "total_resets", -1)),
+                    nancillas=int(getattr(self, "nancillas", -1)),
+                    bond_dim=int(self.bond_dim) if getattr(self, "bond_dim", None) else -1,
+                    trials=int(self.trials),
+                    seed=int(self.seed) if getattr(self, "seed", None) is not None else -1,
+                    n_trajectories=int(getattr(self, "n_trajectories", 1)),
                     **(getattr(self, "mpo_track", {}) or {}),
                 )
             os.replace(tmp_path, path)
@@ -673,6 +786,22 @@ class VariationalAnsatz(abc.ABC):
             'ordering_search_seconds': float(getattr(self, 'ordering_search_seconds', np.nan)),
             'device': str(getattr(self, 'device_str', 'unknown')),
             'n_nonfinite_steps': int(getattr(self, 'n_nonfinite_steps', 0)),
+            # Memory accounting, from the XLA allocator rather than nvidia-smi
+            # so it is per-process and preallocation-proof. See
+            # _device_memory_bytes for why that distinction matters.
+            'gpu_live_bytes': np.asarray(getattr(self, 'gpu_live_bytes', [])),
+            'gpu_peak_bytes': np.asarray(getattr(self, 'gpu_peak_bytes', [])),
+            'host_rss_bytes': np.asarray(getattr(self, 'host_rss_bytes', [])),
+            'peak_gpu_bytes': float(getattr(self, 'peak_gpu_bytes', np.nan)),
+            'peak_host_rss_bytes': float(getattr(self, 'peak_host_rss_bytes', np.nan)),
+            # Run identity. asdict() in the result saver only captures declared
+            # dataclass fields, so everything computed in __post_init__ would
+            # otherwise be absent and the record could not say what chain length
+            # produced it.
+            'reset_mode': self.reset_mode,
+            'n_mps_qubits': int(getattr(self, 'n_mps_qubits', -1)),
+            'total_resets': int(getattr(self, 'total_resets', -1)),
+            'nancillas': int(getattr(self, 'nancillas', -1)),
         }
 
         # Save using the result saver

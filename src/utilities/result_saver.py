@@ -6,12 +6,18 @@
 
 """Helper module for saving optimization results to HDF5 files."""
 
+import errno
+import fcntl
 import os
+import time
 import h5py
 import numpy as np
 from datetime import datetime
 from typing import Any, Dict, Optional
 from dataclasses import asdict, is_dataclass
+
+# Types that survive the HDF5 attribute/dataset switch in _save_to_hdf5.
+_SERIALIZABLE = (int, float, str, bool, list, tuple, np.ndarray, np.generic)
 
 
 class ResultSaver:
@@ -59,7 +65,22 @@ class ResultSaver:
         dict : Dictionary representation of settings
         """
         if is_dataclass(settings):
-            return asdict(settings)
+            # asdict() returns declared dataclass fields only. Everything an
+            # ansatz computes in __post_init__ -- total_resets, n_mps_qubits,
+            # nancillas, ordering_search_seconds, the qubit ordering -- is a
+            # plain attribute assignment and would be dropped, which left the
+            # record unable to say what chain length produced it. Overlay those
+            # from __dict__, skipping callables and anything the HDF5 type
+            # switch cannot represent.
+            out = asdict(settings)
+            for key, value in vars(settings).items():
+                if key in out or key.startswith('__') or callable(value):
+                    continue
+                if value is None or isinstance(value, _SERIALIZABLE):
+                    out[key] = value
+                else:
+                    out[key] = str(value)
+            return out
         elif isinstance(settings, dict):
             return settings
         elif hasattr(settings, '__dict__'):
@@ -153,22 +174,67 @@ class ResultSaver:
         """
         # Serialize settings
         settings_dict = self._serialize_settings(settings)
-        
-        # Save to master file (append mode)
-        self._save_to_hdf5(self.master_file, settings_dict, results, append=True)
-        
+
+        # The individual file is written FIRST and is the authoritative record.
+        # The master file is a shared append target, so a sweep whose jobs finish
+        # together contends on it; if that write has to be given up, the run's
+        # own file has already landed and nothing is lost.
         individual_file = None
         if save_individual:
-            # Create timestamped filename
+            # Second-resolution timestamps collide when several jobs of a sweep
+            # finish in the same second, so the job and process ids go in too.
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            jobid = os.environ.get("SLURM_JOB_ID", "local")
             individual_file = os.path.join(
-                self.tmp_dir, 
-                f"{self.optimizer_name}_{timestamp}.h5"
+                self.tmp_dir,
+                f"{self.optimizer_name}_{timestamp}_{jobid}_{os.getpid()}.h5"
             )
             # Save individual file (new file)
             self._save_to_hdf5(individual_file, settings_dict, results, append=False)
-        
+
+        # Save to master file (append mode), under an exclusive lock. h5py does
+        # no locking of its own across processes, and two concurrent appends to
+        # one file corrupt it rather than interleaving.
+        if not self._append_to_master(settings_dict, results):
+            print(f"WARNING: could not lock {self.master_file}; skipped the master-file "
+                  f"append. This run is still saved at {individual_file}.")
+
         return self.master_file, individual_file
+
+    def _append_to_master(self, settings_dict: Dict, results: Dict,
+                          timeout_s: float = 120.0) -> bool:
+        """Append one run to the shared master file, serialised by a lock file.
+
+        The lock is an flock on a sidecar rather than on the .h5 itself: h5py
+        wants to open the data file on its own terms, and a lock held on a
+        separate descriptor is not disturbed by that. Returns False if the lock
+        could not be taken within the timeout, which the caller treats as
+        non-fatal.
+        """
+        lock_path = self.master_file + ".lock"
+        deadline = time.time() + timeout_s
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        except OSError:
+            return False
+        try:
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as exc:
+                    if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                        return False
+                    if time.time() >= deadline:
+                        return False
+                    time.sleep(1.0)
+            self._save_to_hdf5(self.master_file, settings_dict, results, append=True)
+            return True
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
     
     @staticmethod
     def load_run(filepath: str, run_id: Optional[str] = None) -> Dict:
