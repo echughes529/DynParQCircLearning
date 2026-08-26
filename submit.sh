@@ -86,10 +86,12 @@ if [ -n "$TIME" ]; then
   TIME_ARG=(--time="$TIME")
 fi
 
-# crannog05 has an A40 but cuInit fails there, so JAX silently falls back to CPU
-# and the job runs ~70x slower while still exiting 0. Keep jobs off it. Override
-# with EXCLUDE= to target a specific node set.
-EXCLUDE=${EXCLUDE:-crannog05}
+# crannog05 and crannog01 have A40s but cuInit fails on them, so JAX silently
+# falls back to CPU and the job runs ~70x slower while still exiting 0. The GPU
+# guard in the batch script catches that in two seconds, but each occurrence
+# still costs a queue round-trip -- crannog01 alone killed three jobs of one
+# sweep. Keep jobs off both. Override with EXCLUDE= to target a specific set.
+EXCLUDE=${EXCLUDE:-crannog05,crannog01}
 EXCLUDE_ARG=()
 [ -n "$EXCLUDE" ] && EXCLUDE_ARG=(--exclude="$EXCLUDE")
 

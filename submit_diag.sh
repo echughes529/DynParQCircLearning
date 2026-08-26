@@ -59,7 +59,7 @@ ARGS=(--job-name="$NAME")
 [ -n "$GRES" ] && ARGS+=(--gres="$GRES")
 [ -n "$PARTITION" ] && ARGS+=(--partition="$PARTITION")
 
-EXCLUDE=${EXCLUDE:-crannog05}
+EXCLUDE=${EXCLUDE:-crannog05,crannog01}
 [ -n "$EXCLUDE" ] && ARGS+=(--exclude="$EXCLUDE")
 
 B64=$(printf '%s' "$DIAG_CMD" | base64 -w0)
