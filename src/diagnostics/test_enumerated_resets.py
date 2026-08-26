@@ -316,7 +316,7 @@ def test_zero_probability_branch_gradient():
 
 def test_branch_cap_raises():
     """An accidentally huge 3^R must fail loudly at construction time."""
-    print("\n8. max_reset_branches guard")
+    print("\n9. max_reset_branches guard")
     try:
         ToricCodeAnsatz(Lx=3, Ly=3, nlayers=2, h=0.0, trials=1, bond_dim=BOND_DIM,
                         use_optimal_ordering=False, seed=1, use_prob_resets_ansatz=True,
@@ -340,7 +340,7 @@ def test_branch_cap_raises():
 
 def test_end_to_end():
     """A short real optimisation: energy descends and the thetas move."""
-    print("\n9. End-to-end training")
+    print("\n10. End-to-end training")
     ansatz = ToricCodeAnsatz(Lx=2, Ly=2, nlayers=2, h=0.0, trials=2, maxiter=10,
                              bond_dim=BOND_DIM, use_optimal_ordering=False, seed=5,
                              use_prob_resets_ansatz=True, reset_layers=[1],

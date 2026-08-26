@@ -20,6 +20,8 @@ cd /home/s1931382/DynParQCircLearning
 NAME=""
 TIME=""
 MEM=""
+GRES=""
+PARTITION=""
 
 while [ $# -gt 0 ]; do
   if [ "$1" = "--" ]; then shift; break; fi
@@ -33,6 +35,11 @@ while [ $# -gt 0 ]; do
     NAME) NAME=$val ;;
     TIME) TIME=$val ;;
     MEM)  MEM=$val ;;
+    # GRES= targets a different accelerator, e.g. gpu:nvidia_h200:1 for the
+    # 141 GB cards. Timings from a different card are NOT comparable with the
+    # A40 measurements -- use it for feasibility questions, not for cost ones.
+    GRES) GRES=$val ;;
+    PARTITION) PARTITION=$val ;;
     *)    export "DPQC_${key}=${val}" ;;
   esac
   shift
@@ -49,6 +56,8 @@ NAME=${NAME:-dpqc_diag}
 ARGS=(--job-name="$NAME")
 [ -n "$TIME" ] && ARGS+=(--time="$TIME")
 [ -n "$MEM" ] && ARGS+=(--mem="$MEM")
+[ -n "$GRES" ] && ARGS+=(--gres="$GRES")
+[ -n "$PARTITION" ] && ARGS+=(--partition="$PARTITION")
 
 EXCLUDE=${EXCLUDE:-crannog05}
 [ -n "$EXCLUDE" ] && ARGS+=(--exclude="$EXCLUDE")
