@@ -48,6 +48,13 @@ export TF_CPP_MIN_LOG_LEVEL=2
 export JAX_ENABLE_X64=1
 export PYTHONUNBUFFERED=1
 
+# Report honest GPU memory. JAX preallocates 75% of the card by default, so
+# nvidia-smi shows a flat ~34.5 GiB on an A40 no matter what a job uses -- which
+# is suspiciously close to the "33.8 vs 34.5 GB" figures previously quoted for
+# the enumerated arm, and would make any memory comparison between arms
+# meaningless. With this off, both nvidia-smi and the allocator report real use.
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+
 source /home/s1931382/dpqc_venv/bin/activate
 cd /home/s1931382/DynParQCircLearning || exit 1
 
@@ -81,8 +88,18 @@ if [ -z "${DIAG_CMD:-}" ]; then
   exit 1
 fi
 
-eval "${DIAG_CMD}"
+# --- Memory sampler ---
+# This script had none at all, which mattered as soon as the diagnostics
+# themselves became the memory measurement.
+source /home/s1931382/DynParQCircLearning/job_memlog.sh
+start_memlog "$RUN_DIR"
+
+eval "${DIAG_CMD}" &
+PY_PID=$!
+echo "$PY_PID" > "$RUN_DIR/py.pid"
+wait $PY_PID
 EXIT_CODE=$?
 
+stop_memlog "$RUN_DIR" "$EXIT_CODE"
 echo "Job finished with exit code: ${EXIT_CODE}"
 exit $EXIT_CODE

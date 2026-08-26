@@ -32,6 +32,13 @@ export TF_CPP_MIN_LOG_LEVEL=2
 export JAX_ENABLE_X64=1
 export PYTHONUNBUFFERED=1
 
+# Report honest GPU memory. JAX preallocates 75% of the card by default, so
+# nvidia-smi shows a flat ~34.5 GiB on an A40 no matter what a job uses -- which
+# is suspiciously close to the "33.8 vs 34.5 GB" figures previously quoted for
+# the enumerated arm, and would make any memory comparison between arms
+# meaningless. With this off, both nvidia-smi and the allocator report real use.
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
+
 # --- Activate environment ---
 source /home/s1931382/dpqc_venv/bin/activate
 cd /home/s1931382/DynParQCircLearning || exit 1
@@ -68,25 +75,18 @@ if [ "${DPQC_REQUIRE_GPU:-1}" = "1" ]; then
 fi
 
 # --- Memory sampler ---
-# The final snapshot below has always referenced $MEMLOG_PID, but nothing ever
-# started a logger, so peak memory was never actually recorded. Sample both host
-# RAM and GPU memory every 30s so peak usage is a reportable number.
-(
-  while true; do
-    ts=$(date +%H:%M:%S)
-    ram=$(free -m | awk '/^Mem:/{print $3}')
-    gpu=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1)
-    echo "${ts} ram_mb=${ram} gpu_mb=${gpu:-NA}"
-    sleep 30
-  done
-) >> "$RUN_DIR/memlog.txt" 2>/dev/null &
-MEMLOG_PID=$!
+source /home/s1931382/DynParQCircLearning/job_memlog.sh
+start_memlog "$RUN_DIR"
 
 # --- Run code ---
-python -m src.examples.plot_training_curve_tc
+# Backgrounded so the sampler can find the python process and read its VmHWM,
+# which is a real per-job peak where `free -m` is node-wide.
+python -m src.examples.plot_training_curve_tc &
+PY_PID=$!
+echo "$PY_PID" > "$RUN_DIR/py.pid"
+wait $PY_PID
 EXIT_CODE=$?
 
 # --- Cleanup and final snapshot ---
-kill $MEMLOG_PID 2>/dev/null
-echo "[memlog final] exit_code=${EXIT_CODE} RAM: $(free -h | awk '/^Mem:/{print "used="$3" avail="$7}') | GPU: $(nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader 2>/dev/null)" >> "$RUN_DIR/memlog.txt"
+stop_memlog "$RUN_DIR" "$EXIT_CODE"
 echo "Job finished with exit code: ${EXIT_CODE}"

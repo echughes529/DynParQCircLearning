@@ -191,6 +191,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
                    reset_layers=None, use_mps=True, bond_dim=None, use_optimal_ordering=True,
                    use_trajectory_resets=True, n_trajectories=1, traj_seed=None, seed=None,
                    use_enumerated_resets=False, branch_chunk_size=None,
+                   max_reset_branches=512,
                    ):
 
     if nlayers_current is None:
@@ -224,6 +225,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             seed=seed,
             use_enumerated_resets=use_enumerated_resets,
             branch_chunk_size=branch_chunk_size,
+            max_reset_branches=max_reset_branches,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims, sv_per_step, reset_thetas_per_step = ansatz.optimize(
@@ -850,7 +852,8 @@ if __name__ == "__main__":
     print(f"use_prob_resets_ansatz={use_prob_resets_ansatz}")
     print(f"reset_layers={reset_layers}")
     print(f"use_trajectory_resets={use_trajectory_resets}, n_trajectories={n_trajectories}")
-    print(f"use_enumerated_resets={use_enumerated_resets}, branch_chunk_size={branch_chunk_size}")
+    print(f"use_enumerated_resets={use_enumerated_resets}, branch_chunk_size={branch_chunk_size}, "
+          f"max_reset_branches={max_reset_branches}")
     print(f"seed={seed}, traj_seed={traj_seed}")
     print(f"unitary={unitary}, sparse={sparse}")
     print("=================================")
@@ -877,6 +880,7 @@ if __name__ == "__main__":
                              seed=seed,
                              use_enumerated_resets=use_enumerated_resets,
                              branch_chunk_size=branch_chunk_size,
+                             max_reset_branches=max_reset_branches,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain

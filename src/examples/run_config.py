@@ -122,6 +122,11 @@ use_enumerated_resets = _env("use_enumerated_resets", False)
 # `trials` instead -- memory is near-linear in it (5.6 GB at trials=2) and this
 # estimator is deterministic, so it needs far fewer restarts than a noisy one.
 branch_chunk_size = _env("branch_chunk_size", None)
+# Refuse-to-run guard on 3^R. The default of 512 admits 3x3 with reset_layers=[1]
+# (R=4, 81 branches) but not 4x3 (R=6, 729), which is deliberate -- the cost is
+# exponential and should not be paid by accident. Raise it explicitly when the
+# cost is the thing being measured.
+max_reset_branches = _env("max_reset_branches", 512)
 # Parameter-init seed. None draws a fresh one and prints it. Pin it to compare
 # two arms from bit-identical initial parameters.
 seed = _env("seed", None)
