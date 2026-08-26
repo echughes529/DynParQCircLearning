@@ -313,7 +313,7 @@ def checkpoint_param_sets(path, n_stages=4, trial=0):
 
 
 def run_lattice(Lx, Ly, rows, use_optimal_ordering=True, extra_params=None,
-                modes=MODES):
+                modes=MODES, on_row=None):
     key = f"{Lx}x{Ly}"
     facts = lattice_facts(Lx, Ly)
     print(f"\n{'=' * 78}")
@@ -364,6 +364,8 @@ def run_lattice(Lx, Ly, rows, use_optimal_ordering=True, extra_params=None,
                                  chain=ansatz.n_mps_qubits, exact_cap=cap,
                                  E0=facts["E0"], seconds=dt,
                                  use_optimal_ordering=use_optimal_ordering, **m))
+                if on_row is not None:
+                    on_row()
             if required is None:
                 print(f"  REQUIRED bd: not reached within the ladder (max {ladder[-1]})")
             else:
@@ -405,20 +407,37 @@ def main():
     for spec in args.lattices.split(","):
         Lx, Ly = (int(v) for v in spec.strip().split("x"))
         run_lattice(Lx, Ly, rows, use_optimal_ordering=not args.natural_ordering,
-                    extra_params=extra, modes=modes)
+                    extra_params=extra, modes=modes, on_row=lambda: write_rows(rows, args.out))
 
-    if rows:
-        import csv
-        import os
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        # Rows from different arms carry the same keys, but write the union
-        # defensively so a future arm-specific column cannot silently truncate.
-        fieldnames = list(dict.fromkeys(k for r in rows for k in r))
-        with open(args.out, "w", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=fieldnames, restval="")
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"\nWrote {len(rows)} rows to {args.out}")
+    write_rows(rows, args.out, final=True)
+
+
+def write_rows(rows, out, final=False):
+    """Rewrite the CSV from scratch after every measurement.
+
+    Called per rung, not just at the end. A single enumerated rung at 4x3 walks
+    729 branches and takes over an hour, so a job that hits its walltime part way
+    through the ladder would otherwise save nothing at all -- the same failure
+    that cost several multi-hour training runs before optimize() learned to
+    checkpoint. Rewriting a few hundred rows costs nothing next to the
+    measurement itself.
+    """
+    if not rows:
+        return
+    import csv
+    import os
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    # Rows from different arms carry the same keys, but write the union
+    # defensively so a future arm-specific column cannot silently truncate.
+    fieldnames = list(dict.fromkeys(k for r in rows for k in r))
+    tmp = out + ".partial"
+    with open(tmp, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, restval="")
+        writer.writeheader()
+        writer.writerows(rows)
+    os.replace(tmp, out)     # atomic: a kill mid-write cannot truncate the CSV
+    if final:
+        print(f"\nWrote {len(rows)} rows to {out}")
 
 
 if __name__ == "__main__":
