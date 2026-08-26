@@ -52,27 +52,82 @@ NLAYERS = 2
 RESET_LAYERS = [1]
 SEED = 4321
 # Bond dimensions at which truncation is provably zero (2^floor(n_sites/2)), so
-# the purified reference gradient is exact rather than approximately exact.
-EXACT_BD = {"2x2": {"traj": 4, "pur": 8}, "3x2": {"traj": 8, "pur": 32}}
+# the reference gradient is exact rather than approximately exact. The enumerated
+# arm shares the trajectory arm's bare nq-site chain, hence the same figure.
+EXACT_BD = {
+    "2x2": {"traj": 4, "enum": 4, "pur": 8},
+    "3x2": {"traj": 8, "enum": 8, "pur": 32},
+}
 
 
-def make_pair(lattice):
-    """Two ansatze over the same parameter layout, one per reset implementation."""
+def make_arms(lattice):
+    """One ansatz per reset implementation, over a shared parameter layout.
+
+    All three are built at a bond dimension where truncation is provably zero,
+    so the two exact arms really are exact and any disagreement between them
+    would be a bug rather than a truncation artefact.
+    """
     Lx, Ly = (int(v) for v in lattice.split("x"))
     common = dict(Lx=Lx, Ly=Ly, nlayers=NLAYERS, reset_layers=RESET_LAYERS,
                   trials=1, seed=SEED, use_optimal_ordering=False,
                   normalize_state=True, sparse=False, use_mps=True)
-    purified = ToricCodeAnsatz(use_trajectory_resets=False,
-                               bond_dim=EXACT_BD[lattice]["pur"], **common)
-    traj = ToricCodeAnsatz(use_trajectory_resets=True,
-                           bond_dim=EXACT_BD[lattice]["traj"], **common)
-    assert purified.nparams == traj.nparams, "parameter layouts must match"
-    return purified, traj
+    arms = {
+        "pur": ToricCodeAnsatz(use_trajectory_resets=False,
+                               bond_dim=EXACT_BD[lattice]["pur"], **common),
+        "traj": ToricCodeAnsatz(use_trajectory_resets=True,
+                                bond_dim=EXACT_BD[lattice]["traj"], **common),
+        "enum": ToricCodeAnsatz(use_trajectory_resets=False, use_enumerated_resets=True,
+                                max_reset_branches=3 ** 8,
+                                bond_dim=EXACT_BD[lattice]["enum"], **common),
+    }
+    counts = {k: a.nparams for k, a in arms.items()}
+    assert len(set(counts.values())) == 1, f"parameter layouts must match: {counts}"
+    return arms
 
 
-def exact_grad_fn(purified):
-    """Energy and gradient of the exact reset channel (no sampling involved)."""
-    return jax.jit(jax.value_and_grad(purified.energy_from_params))
+def make_pair(lattice):
+    """Backwards-compatible (purified, trajectory) accessor."""
+    arms = make_arms(lattice)
+    return arms["pur"], arms["traj"]
+
+
+def exact_grad_fn(exact_arm):
+    """Energy and gradient of the exact reset channel (no sampling involved).
+
+    Works for either exact arm -- purified or enumerated. They compute the same
+    function by different routes, which is what cross_check_exact_arms verifies.
+    """
+    return jax.jit(jax.value_and_grad(exact_arm.energy_from_params))
+
+
+def cross_check_exact_arms(arms, params):
+    """Do the two exact arms agree, in energy AND gradient, at exact bond dim?
+
+    This is the load-bearing assumption of the whole three-way comparison: the
+    purified circuit records which branch was taken in two ancillas, while the
+    enumerated one keeps the branches as separate states and sums their
+    contributions. Those are the same channel, so at a bond dimension where
+    neither truncates they must agree to floating-point precision. If they do
+    not, no downstream cost or accuracy number means anything.
+    """
+    out = {}
+    for name in ("pur", "enum"):
+        e, g = exact_grad_fn(arms[name])(params)
+        out[name] = (float(e), np.asarray(g))
+    de = abs(out["pur"][0] - out["enum"][0])
+    gp, ge = out["pur"][1], out["enum"][1]
+    dg = float(np.max(np.abs(gp - ge)))
+    scale = max(float(np.max(np.abs(gp))), 1e-30)
+    cos = float(np.dot(gp, ge) / (np.linalg.norm(gp) * np.linalg.norm(ge) + 1e-300))
+    print(f"\n  exact-arm cross-check (purified vs enumerated, both at exact bond dim):")
+    print(f"    |dE|                  {de:.3e}")
+    print(f"    max |d(grad)|         {dg:.3e}  ({dg / scale:.2e} relative to |grad|_max)")
+    print(f"    cosine(grad_p, grad_e) {cos:.12f}")
+    ok = de < 1e-9 and dg / scale < 1e-7
+    print(f"    -> {'AGREE' if ok else 'DISAGREE -- investigate before trusting anything else'}")
+    return dict(cross_check_dE=de, cross_check_dgrad=dg,
+                cross_check_dgrad_rel=dg / scale, cross_check_cos=cos,
+                cross_check_ok=bool(ok))
 
 
 def sample_estimator(traj, params, n_samples, n_trajectories, baseline, seed):
@@ -190,20 +245,28 @@ def main():
                         help="training steps at which to take the statistics")
     parser.add_argument("--n-trajectories", default="1,2,4,8",
                         help="comma-separated values to compare")
-    parser.add_argument("--out", default="outputs/traj_vs_purified/estimator_stats.csv")
+    parser.add_argument("--ref-mode", default="pur", choices=("pur", "enum"),
+                        help="which exact arm supplies the reference gradient")
+    parser.add_argument("--out", default="outputs/three_resets/estimator_stats.csv")
     args = parser.parse_args()
 
     stages = [int(v) for v in args.stages.split(",")]
     n_trajs = [int(v) for v in args.n_trajectories.split(",")]
 
     print(f"jax devices: {jax.devices()}")
-    purified, traj = make_pair(args.lattice)
-    print(f"\n{args.lattice}: traj chain={traj.n_mps_qubits} at bd={traj.bond_dim} (exact), "
+    arms = make_arms(args.lattice)
+    purified, traj, enum = arms["pur"], arms["traj"], arms["enum"]
+    print(f"\n{args.lattice}: traj/enum chain={traj.n_mps_qubits} at bd={traj.bond_dim} (exact), "
           f"purified chain={purified.n_mps_qubits} at bd={purified.bond_dim} (exact), "
-          f"resets={traj.total_resets}, nparams={traj.nparams}")
+          f"resets={traj.total_resets} -> {3 ** traj.total_resets} branches, "
+          f"nparams={traj.nparams}")
 
     reset_idx = np.asarray(traj.reset_param_indices)
-    grad_fn = exact_grad_fn(purified)
+    # Which exact arm supplies the reference. They are the same function -- the
+    # cross-check below is what establishes that -- so this only changes the
+    # route taken to it, not the answer.
+    grad_fn = exact_grad_fn(arms[args.ref_mode])
+    cross = cross_check_exact_arms(arms, jnp.asarray(traj.initparams[0]))
 
     print(f"\nTraining to collect snapshots at steps {stages} ...")
     traj.n_trajectories = 1
@@ -228,7 +291,8 @@ def main():
                                              baseline=jnp.asarray(exact_e), seed=1000 + step)
             summarise(exact_g, grads, reset_idx, f"n_traj={n_traj}, baseline=E",
                       exact_e, values, rows, step=step, n_trajectories=n_traj,
-                      baseline="exact_energy", lattice=args.lattice)
+                      baseline="exact_energy", lattice=args.lattice,
+                      ref_mode=args.ref_mode, **cross)
 
         # Baseline ablation: the control variate should shrink the variance
         # without moving the mean. Setting it to 0 scales the score term by the
@@ -237,7 +301,8 @@ def main():
                                          baseline=jnp.asarray(0.0), seed=1000 + step)
         summarise(exact_g, grads, reset_idx, "n_traj=1, baseline=0",
                   exact_e, values, rows, step=step, n_trajectories=1,
-                  baseline="zero", lattice=args.lattice)
+                  baseline="zero", lattice=args.lattice,
+                  ref_mode=args.ref_mode, **cross)
 
     print(f"\n{'=' * 78}\nVARIANCE SCALING IN n_trajectories\n{'=' * 78}")
     print(f"{'step':>6} {'n_traj':>7} {'noise norm':>12} {'vs n=1':>9} {'ideal 1/sqrt(n)':>16} {'cos mean':>9}")
