@@ -234,8 +234,76 @@ class VariationalAnsatz(abc.ABC):
         box = K.exp(log_ws - K.stop_gradient(log_ws))
         return K.mean(box * (energies - loo) + loo)
 
+    def enumerated_energy_from_params(self, params) -> Any:
+        """Exact, deterministic reset-channel energy by enumerating every branch.
+
+        The reset channel has three Kraus operators per event (see
+        generate_ansatz._branch_reset_matrix), so R reset events give 3^R branch
+        sequences. Evaluating all of them and recombining reproduces the purified
+        (ancilla) energy exactly, since that energy is
+        ``Tr[H * sum_j P_j |psi_j><psi_j|]`` and trace is linear -- the ancillas
+        in the purified circuit are a which-path record whose only effect is to
+        stop the branches interfering, which enumeration reproduces by keeping
+        them as separate states.
+
+        The trick that makes this cheap to write is to never normalise. For the
+        unnormalised branch state ``|phi_j> = K_{j_R} U_R ... K_{j_1} U_1 |0..0>``,
+
+            P_j        = <phi_j|phi_j>      the probability IS the surviving norm
+            P_j * E_j  = <phi_j|H|phi_j>    so the weight cancels the normalisation
+
+        and therefore
+
+            E = sum_j <phi_j|H|phi_j> / sum_j <phi_j|phi_j>
+
+        with no square roots, no Born-probability computation and no division by
+        branch weights. The denominator is exactly 1 in exact arithmetic (the
+        channel is trace preserving); dividing by it anyway is precisely the
+        right correction for MPS truncation drift, which shrinks the norm.
+        Zero-probability branches contribute 0 to both sums, so the 0/0 that
+        _sampled_reset has to guard with q_safe never arises here.
+
+        Unlike the trajectory estimator this needs no DiCE box and no baseline:
+        theta appears inside |phi_j> as the literal cos(theta/2) / sin(theta/2)
+        prefactor on each Kraus operator, so ordinary reverse-mode autodiff
+        differentiates it. The score term and the pathwise term are the same
+        derivative here.
+        """
+        def one_branch(branch):
+            qc = self._circuit_branch(params, branch)
+            # MPSCircuit.expectation defaults to normalize=False, so
+            # _energy_of_circuit already returns the unnormalised <phi|H|phi>.
+            return self._energy_of_circuit(qc), K.real(qc.get_norm()) ** 2
+
+        branches = self._reset_branches
+        chunk = getattr(self, "branch_chunk_size", None)
+        if chunk is None:
+            nums, dens = jax.vmap(one_branch)(branches)
+        else:
+            # Evaluate `chunk` branches at a time under lax.map (a sequential
+            # scan) instead of one wide vmap. Measured NOT to help: lax.map under
+            # reverse-mode autodiff lowers to a scan that still stores every
+            # iteration's residuals, so peak tape is unchanged (33.8 vs 34.5 GB at
+            # 3x3/bd64/trials=10) while the serialisation costs 40% more time.
+            # Kept for the forward-only case and for experimentation; lower
+            # `trials` if you need the memory back.
+            nchunks, rem = divmod(len(branches), chunk)
+            if rem:
+                raise ValueError(
+                    f"branch_chunk_size={chunk} does not divide the branch count "
+                    f"{len(branches)} (3^{branches.shape[1]}). Pick a divisor."
+                )
+            chunked = branches.reshape(nchunks, chunk, -1)
+            nums, dens = jax.lax.map(jax.vmap(one_branch), chunked)
+        return K.sum(nums) / K.sum(dens)
+
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
+        if getattr(self, "use_enumerated_resets", False):
+            # Deterministic exact-channel path: builds and recombines all 3^R
+            # Kraus branches itself, so it never goes through _circuit.
+            return self.enumerated_energy_from_params(params)
+
         qc = self._circuit(params, seed=seed)
 
         if self.normalize_state and not self.use_mps:
@@ -296,6 +364,16 @@ class VariationalAnsatz(abc.ABC):
                 "always read 1.0. The mixed state only exists as the ensemble over "
                 "trajectories; estimating Tr[rho^2] would need |<phi_1|phi_2>|^2 "
                 "averaged over independently sampled trajectory pairs."
+            )
+        if getattr(self, "use_enumerated_resets", False):
+            raise NotImplementedError(
+                "purity_from_params is not implemented for use_enumerated_resets=True: "
+                "there is no single state to take an ancilla cut of, since the mixed "
+                "state is carried as the ensemble {|phi_j>} over the 3^R Kraus "
+                "branches. It is computable -- rho = sum_j |phi_j><phi_j| with the "
+                "phi_j unnormalised, so Tr[rho^2] = sum_ij |<phi_i|phi_j>|^2 -- but "
+                "that needs 3^(2R) pairwise MPS overlaps (6561 at the 3x3 production "
+                "config) and is not wired up."
             )
         # This is a generic implementation that can be overridden
         if not hasattr(self, 'lattice'):

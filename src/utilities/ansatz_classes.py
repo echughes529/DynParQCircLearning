@@ -8,6 +8,7 @@
 
 from dataclasses import dataclass
 from typing import Optional, List
+import itertools
 import numpy as np
 import jax
 from jax import numpy as jnp
@@ -21,6 +22,7 @@ from src.utilities.generate_ansatz import (
     construct_smallangle_init_toriccodelattice,
     construct_dyn_circuit_toriccodelattice_prob_resets,
     construct_traj_circuit_toriccodelattice_prob_resets,
+    construct_branch_circuit_toriccodelattice_prob_resets,
     construct_unitary_circuit_toriccodelattice,
     construct_dyn_circuit_toriccodelattice,
     get_nresets_per_layer_toriccode,
@@ -72,11 +74,45 @@ class ToricCodeAnsatz(VariationalAnsatz):
     traj_seed: Optional[int] = None    # trajectory randomness; defaults to self.seed
     baseline_beta: float = 0.9         # EMA decay of the score-term baseline
 
+    # Enumerated (ancilla-free, deterministic) resets. Instead of sampling one
+    # branch of the reset channel, evaluate ALL 3^total_resets Kraus branches and
+    # recombine them. This reproduces the purified energy *exactly* -- see
+    # VariationalAnsatz.enumerated_energy_from_params -- while keeping the chain
+    # at nq sites, and needs no DiCE box, no baseline and no sampling, so the
+    # gradient is exact rather than a high-variance score estimate. The price is
+    # 3^R circuit evaluations per energy, so it is a small-R tool: 81 branches at
+    # the 3x3 reset_layers=[1] production config, but 6561 with two reset layers.
+    use_enumerated_resets: bool = False
+    max_reset_branches: int = 512      # guard against a silently huge 3^R
+    # Evaluate branches in chunks under lax.map instead of one wide vmap.
+    # MEASURED (3x3, bd64, trials=10, A40): this does NOT save memory -- 33.8 GB
+    # chunked vs 34.5 GB unchunked -- and costs 40% more time (14.5 vs 10.4 s/step).
+    # Under reverse-mode autodiff lax.map lowers to a scan that still stores every
+    # iteration's residuals, so peak tape is unchanged. Lower `trials` instead:
+    # memory is near-linear in it (5.6 GB at trials=2), and this estimator is
+    # deterministic so it needs far fewer restarts than a noisy one.
+    branch_chunk_size: Optional[int] = None
+
     def __post_init__(self):
         if self.cartan_mode not in ("separate", "fused"):
             raise ValueError(f"Unknown cartan_mode: {self.cartan_mode!r} (expected 'separate' or 'fused')")
         if self.toffoli_mode not in ("decomposed", "direct"):
             raise ValueError(f"Unknown toffoli_mode: {self.toffoli_mode!r} (expected 'decomposed' or 'direct')")
+
+        if self.use_enumerated_resets:
+            if self.use_trajectory_resets:
+                raise ValueError(
+                    "use_enumerated_resets and use_trajectory_resets are mutually "
+                    "exclusive: the first evaluates every branch of the reset channel, "
+                    "the second samples one. Set use_trajectory_resets=False."
+                )
+            if not self.use_mps:
+                raise ValueError("use_enumerated_resets=True requires use_mps=True.")
+
+        # Chain layout is identical for both ancilla-free modes: no coin or sink
+        # qubits, so the MPS is exactly the system qubits. Only the *combination*
+        # rule for the branches differs (sample one vs evaluate all).
+        self._ancilla_free_resets = self.use_trajectory_resets or self.use_enumerated_resets
 
         self.split_conf = make_split_conf(self.bond_dim)
 
@@ -106,12 +142,15 @@ class ToricCodeAnsatz(VariationalAnsatz):
                     )
 
             self.total_resets = self.nresets_per_layer * len(self.active_reset_layers)
-            # Trajectory resets measure and discard in place, so they need no
-            # ancillas at all; the purified path needs a coin and a sink each.
-            self.nancillas = 0 if self.use_trajectory_resets else 2 * self.total_resets
-            # Unchanged either way: one theta per reset event.
+            # Both ancilla-free modes act in place, so they need no ancillas at
+            # all; the purified path needs a coin and a sink each.
+            self.nancillas = 0 if self._ancilla_free_resets else 2 * self.total_resets
+            # Unchanged across all three modes: one theta per reset event.
             self.nparams = (self.nplaquettes * 3 * 9 * self.nlayers +
                           self.total_resets + 3 * self.lattice.num_qubits)
+
+            if self.use_enumerated_resets:
+                self._build_reset_branch_table()
 
             self._build_interleaved_ordering()
         elif self.unitary:
@@ -124,6 +163,32 @@ class ToricCodeAnsatz(VariationalAnsatz):
         
         print(self.__dict__)
         super().__post_init__()
+
+    def _build_reset_branch_table(self):
+        """Enumerate every Kraus branch sequence for use_enumerated_resets.
+
+        One index in {0, 1, 2} per reset event, so the table is (3^R, R). It is
+        a static array, built once here rather than inside the traced energy, and
+        is the thing jax.vmap maps over in
+        VariationalAnsatz.enumerated_energy_from_params.
+        """
+        nbranches = 3 ** self.total_resets
+        if nbranches > self.max_reset_branches:
+            raise ValueError(
+                f"use_enumerated_resets=True needs 3^{self.total_resets} = {nbranches} "
+                f"circuit evaluations per energy, above max_reset_branches="
+                f"{self.max_reset_branches}. This config is Lx={self.Lx}, Ly={self.Ly}, "
+                f"reset_layers={self.reset_layers} -> {self.nresets_per_layer} resets on "
+                f"each of {len(self.active_reset_layers)} layer(s). Exact enumeration is "
+                "only practical for small R: reduce the lattice, confine resets to one "
+                "layer, or use use_trajectory_resets=True instead. Raise "
+                "max_reset_branches if you really want to pay this."
+            )
+        self._reset_branches = jnp.asarray(
+            list(itertools.product(range(3), repeat=self.total_resets)), dtype=jnp.int32
+        ).reshape(nbranches, self.total_resets)
+        print(f"[{type(self).__name__}] enumerated resets: {self.total_resets} reset "
+              f"events -> {nbranches} Kraus branches per energy evaluation")
 
     def _build_interleaved_ordering(self):
         """
@@ -154,9 +219,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
         reset_set = set(reset_qubits)
         n_reset_layers = len(self.active_reset_layers)
-        # Trajectory resets add no sites, so nothing has to be reserved in the
+        # Ancilla-free resets add no sites, so nothing has to be reserved in the
         # chain and the search reduces to a pure claw-distance minimisation.
-        slots_per_reset_qubit = 0 if self.use_trajectory_resets else 2 * n_reset_layers
+        slots_per_reset_qubit = 0 if self._ancilla_free_resets else 2 * n_reset_layers
 
         claw_edges = toriccode.all_claws()
 
@@ -203,7 +268,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
         ancilla_mps_positions = []
         mps_reset_info = [None] * n_ancilla_pairs
 
-        if self.use_trajectory_resets:
+        if self._ancilla_free_resets:
             # No ancillas: the chain is exactly the system qubits, in whichever
             # order the (unpenalised) claw-distance search picked.
             for pos, sq in enumerate(best_order):
@@ -247,10 +312,11 @@ class ToricCodeAnsatz(VariationalAnsatz):
         claws = [claws[i::3][j] for i in range(3) for j in range(nplaq)]
         self.mps_claws = [(sys_to_mps[a], sys_to_mps[b]) for a, b in claws]
 
-        # Reset targets in circuit-application order (layer by layer). Trajectory
-        # mode needs only the system chain position; the purified path needs the
-        # (sys, coin, sink) triple, looked up by its stable ancilla_idx.
-        if self.use_trajectory_resets:
+        # Reset targets in circuit-application order (layer by layer). The
+        # ancilla-free modes need only the system chain position; the purified
+        # path needs the (sys, coin, sink) triple, looked up by its stable
+        # ancilla_idx.
+        if self._ancilla_free_resets:
             self.mps_reset_qubits = [
                 sys_to_mps[sq]
                 for _layer in self.active_reset_layers
@@ -266,10 +332,11 @@ class ToricCodeAnsatz(VariationalAnsatz):
         self.ordering_search_seconds = _time.perf_counter() - _build_start
 
         max_claw = max(abs(sys_to_mps[a] - sys_to_mps[b]) for a, b in claw_edges)
-        if self.use_trajectory_resets:
-            ordering_desc = (f"trajectory-reset ordering ({n_trials} random trials)"
+        if self._ancilla_free_resets:
+            mode = "enumerated" if self.use_enumerated_resets else "trajectory"
+            ordering_desc = (f"{mode}-reset ordering ({n_trials} random trials)"
                              if self.use_optimal_ordering else
-                             "trajectory-reset natural ordering (no search)")
+                             f"{mode}-reset natural ordering (no search)")
         elif self.use_optimal_ordering:
             ordering_desc = f"optimised ordering ({n_trials} random trials)"
         else:
@@ -278,7 +345,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
               f"{self.n_mps_qubits} qubits ({nq} system + {self.nancillas} ancilla) "
               f"[{self.ordering_search_seconds:.1f}s]")
         print(f"  System qubit order: {best_order}")
-        if self.use_trajectory_resets:
+        if self._ancilla_free_resets:
             print(f"  Max claw distance: {max_claw}, reset sites: {self.mps_reset_qubits}")
         else:
             max_ccx = max((abs(s - p) for s, p, _ in mps_reset_info), default=0)
@@ -292,7 +359,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
                     self.sparse, self.use_prob_resets_ansatz, self.prob_reset_direction,
                     reset_layers_key, self.use_mps, self.normalize_state, self.bond_dim,
                     self.cartan_mode, self.toffoli_mode,
-                    self.use_trajectory_resets, self.n_trajectories))
+                    self.use_trajectory_resets, self.n_trajectories,
+                    self.use_enumerated_resets, self.branch_chunk_size))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -409,6 +477,19 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 params, self.Lx, self.Ly, self.nlayers, split_conf=self.split_conf,
                 normalize_state=self.normalize_state,
             )
+        elif self.use_enumerated_resets:
+            # The energy never comes through here -- energy_from_params routes
+            # straight to enumerated_energy_from_params, which builds all 3^R
+            # branches. This is only for the diagnostics that call
+            # _circuit(params) directly (bond dimensions, singular values), and
+            # they want one representative state.
+            #
+            # The all-zeros branch (no reset fired anywhere) is the right choice
+            # for them: K_0 is proportional to the identity while K_1 and K_2 are
+            # projectors, so resets only ever *reduce* entanglement. The no-reset
+            # branch is therefore the worst case, and the bond dimensions it
+            # reports bound every other branch's.
+            return self._circuit_branch(params, jnp.zeros(self.total_resets, dtype=jnp.int32))
         elif self.use_trajectory_resets:
             # One trajectory needs randomness. Callers inside the optimisation
             # loop go through _circuit_traj with an explicit status vector; the
@@ -443,6 +524,33 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 split_conf=self.split_conf, normalize_state=self.normalize_state,
                 cartan_mode=self.cartan_mode,
             )
+
+    def _circuit_branch(self, params, branch):
+        """Build one unnormalised Kraus branch of the reset channel.
+
+        ``branch`` holds one index in {0, 1, 2} per reset event and may be a
+        traced array, so this is vmappable over the whole branch table. The
+        returned state is deliberately NOT normalised: its norm is the branch
+        probability. See VariationalAnsatz.enumerated_energy_from_params.
+        """
+        if not self.use_enumerated_resets:
+            raise ValueError(
+                "_circuit_branch requires use_enumerated_resets=True; this ansatz "
+                "is configured for a different reset path."
+            )
+        return construct_branch_circuit_toriccodelattice_prob_resets(
+            params,
+            nlayers=self.nlayers,
+            nparams=self.nparams,
+            n_mps_qubits=self.n_mps_qubits,
+            mps_claws=self.mps_claws,
+            mps_reset_qubits=self.mps_reset_qubits,
+            active_reset_layers=self.active_reset_layers,
+            sys_mps_positions=self.sys_mps_positions,
+            branch=branch,
+            split_conf=self.split_conf,
+            cartan_mode=self.cartan_mode,
+        )
 
     def _circuit_traj(self, params, status, force=None):
         """Build one sampled trajectory. Returns (qc, log_w).

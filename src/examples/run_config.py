@@ -108,6 +108,20 @@ use_optimal_ordering = _env("use_optimal_ordering", True)
 # parameters -- which is what makes an A/B comparison meaningful.
 use_trajectory_resets = _env("use_trajectory_resets", True)
 n_trajectories = _env("n_trajectories", 1)
+# Third option, mutually exclusive with use_trajectory_resets: evaluate ALL
+# 3^total_resets Kraus branches of the reset channel and recombine them. Same
+# ancilla-free nq-site chain as the trajectory path, but the energy and gradient
+# are exact and deterministic -- it reproduces the purified energy to machine
+# precision, with no DiCE score term and hence no gradient variance. Costs 3^R
+# circuit evaluations per energy, so it is a small-R tool: 81 branches at 3x3
+# with reset_layers=[1], but 6561 with two reset layers (see max_reset_branches).
+use_enumerated_resets = _env("use_enumerated_resets", False)
+# Must divide 3^R. MEASURED not to help: at 3x3/bd64/trials=10 on an A40 it saved
+# nothing (33.8 vs 34.5 GB) and cost 40% more time, because reverse-mode autodiff
+# turns lax.map into a scan that still stores every iteration's residuals. Lower
+# `trials` instead -- memory is near-linear in it (5.6 GB at trials=2) and this
+# estimator is deterministic, so it needs far fewer restarts than a noisy one.
+branch_chunk_size = _env("branch_chunk_size", None)
 # Parameter-init seed. None draws a fresh one and prints it. Pin it to compare
 # two arms from bit-identical initial parameters.
 seed = _env("seed", None)

@@ -190,6 +190,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
                    unitary=True, sparse=True, perform_noisy_simulations=False, number_of_shots=1000, use_prob_resets_ansatz=False,
                    reset_layers=None, use_mps=True, bond_dim=None, use_optimal_ordering=True,
                    use_trajectory_resets=True, n_trajectories=1, traj_seed=None, seed=None,
+                   use_enumerated_resets=False, branch_chunk_size=None,
                    ):
 
     if nlayers_current is None:
@@ -221,11 +222,8 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             n_trajectories=n_trajectories,
             traj_seed=traj_seed,
             seed=seed,
-            mpo_bond_dim=mpo_bond_dim,
-            mpo_observables=mpo_observables,
-            mpo_trials=mpo_trials,
-            mpo_every_nsaves=mpo_every_nsaves,
-            mpo_include_hamiltonian=mpo_include_hamiltonian,
+            use_enumerated_resets=use_enumerated_resets,
+            branch_chunk_size=branch_chunk_size,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims, sv_per_step, reset_thetas_per_step = ansatz.optimize(
@@ -840,6 +838,7 @@ if __name__ == "__main__":
     print(f"use_prob_resets_ansatz={use_prob_resets_ansatz}")
     print(f"reset_layers={reset_layers}")
     print(f"use_trajectory_resets={use_trajectory_resets}, n_trajectories={n_trajectories}")
+    print(f"use_enumerated_resets={use_enumerated_resets}, branch_chunk_size={branch_chunk_size}")
     print(f"seed={seed}, traj_seed={traj_seed}")
     print(f"unitary={unitary}, sparse={sparse}")
     print("=================================")
@@ -864,6 +863,8 @@ if __name__ == "__main__":
                              n_trajectories=n_trajectories,
                              traj_seed=traj_seed,
                              seed=seed,
+                             use_enumerated_resets=use_enumerated_resets,
+                             branch_chunk_size=branch_chunk_size,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain

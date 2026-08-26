@@ -470,6 +470,128 @@ def _sampled_reset(qc, k, theta, u, force=None):
     return log_w
 
 
+def _branch_reset_matrix(theta, onehot3):
+    """2x2 matrix of ONE unnormalised Kraus branch of the reset channel.
+
+    The reset channel ``rho -> (1-p) rho + p (reset-to-|0>)(rho)`` with
+    ``p = sin^2(theta/2)`` has exactly three Kraus operators:
+
+        K_0 = cos(theta/2) * I          "no reset"
+        K_1 = sin(theta/2) * |0><0|     "reset, qubit was measured 0"
+        K_2 = sin(theta/2) * |0><1|     "reset, qubit was measured 1"
+
+    They are complete -- sum_j K_j^dag K_j = (1-p)I + p(|0><0| + |1><1|) = I --
+    which is what makes the channel trace-preserving. ``onehot3`` selects one,
+    so this returns
+
+                    [ c*h0 + s*h1    s*h2 ]
+        M(theta) =  [                     ]   c = cos(theta/2), s = sin(theta/2)
+                    [     0         c*h0  ]
+
+    Selecting with a one-hot blend rather than a Python ``if`` is what lets the
+    branch index be a *traced* array, so all 3^R branches can be evaluated in one
+    batched jax.vmap call instead of compiling 3^R separate programs. Both terms
+    are always computed and multiplied by exactly 0.0 or 1.0, so one survives
+    bit-for-bit. Same idiom as the did_reset blend in _sampled_reset and as tc's
+    AbstractCircuit.select_gate.
+
+    Note that *summing* the three branches instead of selecting one gives
+    ``[[c+s, s], [0, c]]``: the coherent superposition, a different (non-CPTP)
+    object. Adding the branch energies with their Born weights reproduces the
+    channel; adding the branch amplitudes does not.
+    """
+    c = K.cos(theta / 2.0)
+    s = K.sin(theta / 2.0)
+    h0, h1, h2 = onehot3[0], onehot3[1], onehot3[2]
+    zero = 0.0 * c                  # zeros_like without assuming a backend method
+    m = K.stack([K.stack([c * h0 + s * h1, s * h2]),
+                 K.stack([zero, c * h0])])
+    return K.cast(m, tc.dtypestr)
+
+
+def _branch_reset(qc, k, theta, branch_idx):
+    """Apply one unnormalised Kraus branch of the reset at chain site k. Mutates qc.
+
+    Unlike _sampled_reset this computes no Born probabilities and performs no
+    division: the branch weight is carried implicitly by the norm of the state,
+    since ``|| K_j |psi> ||^2`` IS the branch probability P_j. The caller
+    recovers the exact channel energy ``sum_j P_j E_j`` as
+
+        sum_j <phi_j|H|phi_j> / sum_j <phi_j|phi_j>
+
+    with no normalisation anywhere, and hence no 0/0 on the (many) branches
+    whose probability is exactly zero -- the case _sampled_reset has to guard
+    with q_safe.
+
+    Args:
+        qc: tc.MPSCircuit being built.
+        k: chain position of the system qubit to reset.
+        theta: reset angle; p = sin^2(theta/2).
+        branch_idx: scalar in {0, 1, 2}. May be a traced array, so that the
+            enumeration over branches can be vmapped.
+    """
+    # position(k) first for the same reason as _sampled_reset: a single-site
+    # operator applied at the orthogonality centre is the standard TEBD update,
+    # and it leaves the canonical form -- and every bond dimension -- intact.
+    # A reset therefore costs no SVD and no truncation at all.
+    qc.position(k)
+    T = qc._mps.tensors[k]                                    # (Dl, 2, Dr)
+    onehot3 = K.cast(K.onehot(K.cast(branch_idx, "int32"), 3), tc.rdtypestr)
+    qc._mps.tensors[k] = K.einsum("ab,ibj->iaj",
+                                  _branch_reset_matrix(theta, onehot3), T)
+
+
+def construct_branch_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
+                                                          n_mps_qubits, mps_claws,
+                                                          mps_reset_qubits,
+                                                          active_reset_layers,
+                                                          sys_mps_positions, branch,
+                                                          split_conf=None,
+                                                          cartan_mode="fused"):
+    """Build ONE unnormalised Kraus branch of the reset-channel circuit.
+
+    Same parameter layout and consumption order as the trajectory and purified
+    builders (one theta per reset event), so the same params vector drives all
+    three and their energies are directly comparable.
+
+    Deliberately takes no ``normalize_state``: the surviving norm of each branch
+    state IS its probability, so normalising -- per layer or at the end -- would
+    throw the branch weights away. The unitary layers are norm-preserving anyway
+    (up to truncation), and the residual truncation drift cancels exactly in the
+    sum(num)/sum(den) ratio the caller forms. See
+    VariationalAnsatz.enumerated_energy_from_params.
+
+    Args:
+        branch: one branch index in {0, 1, 2} per reset event, in
+            circuit-application order (indexable by the same reset_idx as
+            mps_reset_qubits). May be a traced array of shape (total_resets,).
+    """
+    if split_conf is None:
+        split_conf = make_split_conf()
+    if len(params) != nparams:
+        raise ValueError(f"Parameter vector has wrong size: got {len(params)}, expected {nparams}.")
+
+    qc = tc.MPSCircuit(n_mps_qubits, split=split_conf)
+    paramindex = 0
+
+    nresets_per_layer = len(mps_reset_qubits) // len(active_reset_layers) if active_reset_layers else 0
+    reset_idx = 0
+
+    for l in range(nlayers):
+        qc, paramindex = onesetofunitaries(qc, mps_claws, params, paramindex, cartan_mode=cartan_mode)
+
+        if l in active_reset_layers:
+            for _ in range(nresets_per_layer):
+                _branch_reset(qc, mps_reset_qubits[reset_idx],
+                              params[paramindex], branch[reset_idx])
+                paramindex += 1
+                reset_idx += 1
+
+    qc, paramindex = onelayerofsingleunitaries(qc, params, paramindex,
+                                               qubit_indices=sys_mps_positions)
+    return qc
+
+
 def construct_traj_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
                                                         n_mps_qubits, mps_claws,
                                                         mps_reset_qubits, active_reset_layers,

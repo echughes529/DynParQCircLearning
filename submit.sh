@@ -15,9 +15,10 @@
 #   ./submit.sh LX=4 LY=4 TAG=traj_pls_wrk      # job name: 4x4_bd64_r1_traj_traj_pls_wrk
 #   ./submit.sh NAME=whatever_i_like            # job name: whatever_i_like
 #
-# Default job name is {Lx}x{Ly}_bd{bond_dim}_r{reset_layers}_{traj|pur}, where the last
-# field records which reset implementation ran -- "traj" for the ancilla-free sampled
-# path, "pur" for the purified two-ancilla path. TAG= appends your own descriptive text
+# Default job name is {Lx}x{Ly}_bd{bond_dim}_r{reset_layers}_{traj|pur|enum}, where the
+# last field records which reset implementation ran -- "traj" for the ancilla-free sampled
+# path, "pur" for the purified two-ancilla path, "enum" for the ancilla-free exact
+# enumeration over all 3^R Kraus branches. TAG= appends your own descriptive text
 # to it; NAME= replaces it entirely. Any parameter in run_config.py can be set as
 # KEY=VALUE, e.g. MAXITER=2000 TRIALS=20 RESET_LAYERS="[0,1]" TRACK_GRADS=true SEED=1234.
 #
@@ -63,9 +64,11 @@ done
 # plot_training_curve_tc instead would pull in TensorCircuit/JAX/TF and take ~20s.
 source /home/s1931382/dpqc_venv/bin/activate
 read -r R_LX R_LY R_BD R_RL R_MODE <<<"$(python -c '
-from src.examples.run_config import Lx, Ly, bond_dim, reset_layers, use_trajectory_resets
+from src.examples.run_config import (Lx, Ly, bond_dim, reset_layers,
+                                     use_trajectory_resets, use_enumerated_resets)
 rl = "all" if reset_layers is None else "-".join(str(x) for x in reset_layers)
-print(Lx, Ly, bond_dim, rl, "traj" if use_trajectory_resets else "pur")
+mode = "enum" if use_enumerated_resets else ("traj" if use_trajectory_resets else "pur")
+print(Lx, Ly, bond_dim, rl, mode)
 ')"
 
 if [ -z "$NAME" ]; then
