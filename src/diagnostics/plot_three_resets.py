@@ -14,6 +14,7 @@ Supersedes plot_traj_vs_purified.py, which knows only two arms.
 
 import argparse
 import csv
+import re
 import os
 from collections import defaultdict
 
@@ -123,6 +124,21 @@ def truthy(row, key):
     return str(row.get(key, "")).strip().lower() in ("true", "1", "yes")
 
 
+def requested_gib(row):
+    """How much the allocator was asked for when it refused, in GiB.
+
+    XLA's RESOURCE_EXHAUSTED message names the allocation it could not satisfy
+    ("Out of memory while trying to allocate 68.08GiB"). For a configuration
+    that does not fit, that is the only quantitative thing available -- and it
+    is the useful one, since it says how far past the card the configuration is
+    rather than merely that it is past.
+    """
+    m = re.search(r"allocate\s+([\d.]+)\s*([KMG])iB", str(row.get("error", "")))
+    if not m:
+        return np.nan
+    return float(m.group(1)) * {"K": 1 / 2 ** 20, "M": 1 / 2 ** 10, "G": 1.0}[m.group(2)]
+
+
 # ----------------------------------------------------------------------------
 # 1. Bond dimension required
 # ----------------------------------------------------------------------------
@@ -142,8 +158,20 @@ def fig_bond_dim(rows, outdir, gate=1e-5):
     # A floor so exactly-zero discarded weight (the exact-cap rungs) stays
     # plottable on a log axis instead of vanishing.
     FLOOR = 1e-16
+    # The two ancilla-free arms share a chain and therefore truncate identically,
+    # so their curves coincide exactly and one would hide the other. Draw the
+    # trajectory arm wide and solid underneath and the enumerated arm narrow and
+    # dashed on top: where they agree you see both, which is itself the point.
+    STYLE = {
+        "traj": dict(linewidth=3.2, linestyle="-", alpha=0.85, zorder=2, markersize=6),
+        "pur": dict(linewidth=2.0, linestyle="-", zorder=3, markersize=5),
+        "enum": dict(linewidth=1.5, linestyle=(0, (4, 2.5)), zorder=4, markersize=5.5,
+                     markerfacecolor="white", markeredgewidth=1.6),
+    }
+    coincide = False
     for ax, lat in zip(axes[0], lattices):
         tidy(ax)
+        curves = {}
         for mode in ORDER:
             pts = sorted([r for r in rows if r["lattice"] == lat and r["mode"] == mode],
                          key=lambda r: num(r, "bond_dim"))
@@ -151,26 +179,44 @@ def fig_bond_dim(rows, outdir, gate=1e-5):
                 continue
             x = [num(r, "bond_dim") for r in pts]
             y = [max(num(r, "discarded_weight"), FLOOR) for r in pts]
-            ax.plot(x, y, marker=MARKER[mode], color=COLOR[mode], label=SHORT[mode],
-                    markeredgecolor="white", markeredgewidth=0.8)
+            curves[mode] = dict(zip(x, y))
+            kw = dict(STYLE[mode])
+            kw.setdefault("markeredgecolor", "white")
+            kw.setdefault("markeredgewidth", 0.8)
+            if mode == "enum":
+                kw["markeredgecolor"] = COLOR[mode]
+            ax.plot(x, y, marker=MARKER[mode], color=COLOR[mode], label=SHORT[mode], **kw)
             # Annotate the first rung that clears the gate: that is the number
-            # the training runs are configured from.
+            # the training runs are configured from. Staggered per arm so the
+            # labels of coincident curves do not print on top of each other.
             passed = next((r for r in pts if num(r, "discarded_weight") <= gate), None)
             if passed is not None:
                 bd = int(num(passed, "bond_dim"))
-                ax.annotate(f"bd {bd}", (bd, max(num(passed, "discarded_weight"), FLOOR)),
-                            textcoords="offset points", xytext=(4, 8),
-                            fontsize=7.5, color=COLOR[mode])
+                dy = {"traj": 20, "pur": 8, "enum": 34}[mode]
+                ax.annotate(f"{SHORT[mode][:4]} {bd}",
+                            (bd, max(num(passed, "discarded_weight"), FLOOR)),
+                            textcoords="offset points", xytext=(5, dy),
+                            fontsize=7.5, color=COLOR[mode], fontweight="semibold")
+        if "traj" in curves and "enum" in curves:
+            shared = set(curves["traj"]) & set(curves["enum"])
+            if shared and all(np.isclose(curves["traj"][b], curves["enum"][b], rtol=1e-6)
+                              for b in shared):
+                coincide = True
         ax.axhline(gate, color=INK_MUTED, linestyle="--", linewidth=1.0)
         ax.text(0.02, gate, f" gate {gate:g}", transform=ax.get_yaxis_transform(),
                 va="bottom", fontsize=7, color=INK_MUTED)
         ax.set_xscale("log", base=2)
         ax.set_yscale("log")
+        ax.set_ylim(FLOOR / 3, 3)
         ax.set_title(lat)
         ax.set_xlabel("bond dimension")
     axes[0][0].set_ylabel("discarded weight  $1-\\|\\psi\\|^2$")
-    axes[0][0].legend(loc="lower left")
-    fig.suptitle("Bond dimension each reset implementation needs", y=1.02, fontsize=11)
+    axes[0][-1].legend(loc="lower left", fontsize=7.5)
+    note = ("trajectory and parallel share the bare $n_q$-site chain, so their curves coincide "
+            "exactly (dashed over solid)" if coincide else "")
+    fig.suptitle("Bond dimension each reset implementation needs", y=1.04, fontsize=11)
+    if note:
+        fig.text(0.5, 0.97, note, ha="center", fontsize=8, color=INK_2)
     save(fig, outdir, "bond_dim_requirement.png")
 
 
@@ -236,7 +282,10 @@ def fig_memory(rows, outdir, card_gib=44.4):
     ok = [r for r in rows if not truthy(r, "oom") and r.get("failed_stage") in (None, "", "None")]
     if not ok:
         return
-    fig, axes = plt.subplots(1, 2, figsize=(10.5, 3.6))
+    # The right panel carries long row labels on its y-axis, so it needs both
+    # more width and a wide gutter or they run back over the left panel's bars.
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 4.0),
+                             gridspec_kw=dict(width_ratios=[1.0, 1.25], wspace=0.42))
 
     # --- left: peak per arm at matched settings ---
     ax = axes[0]
@@ -263,37 +312,75 @@ def fig_memory(rows, outdir, card_gib=44.4):
     ax.set_xticklabels([f"{lat}\nbd {bd}, {t} trials" for lat, bd, t in keys], fontsize=7.5)
     ax.set_ylabel("peak device memory (GiB)")
     ax.set_title("Peak memory at matched settings")
-    ax.legend(loc="upper left", ncol=3)
+    ax.set_ylim(0, card_gib * 1.18)
+    ax.legend(loc="upper center", ncol=3, bbox_to_anchor=(0.5, -0.20))
 
     # --- right: the enumerated feasibility frontier ---
+    # A run that OOMs has no measured peak, but the allocator says how much it
+    # was ASKING for when it gave up. That number is the informative one: it says
+    # how far past the card a configuration is, not merely that it is past.
     ax = axes[1]
     tidy(ax)
     enum_rows = [r for r in rows if r["mode"] == "enum"]
     by_cfg = defaultdict(list)
     for r in enum_rows:
-        by_cfg[(r["lattice"], int(num(r, "bond_dim")))].append(r)
-    for (lat, bd), rs in sorted(by_cfg.items()):
-        rs = sorted(rs, key=lambda r: num(r, "trials"))
-        fit = [(num(r, "trials"), num(r, "peak_bytes_after_vg") / 2 ** 30) for r in rs
-               if not truthy(r, "oom") and np.isfinite(num(r, "peak_bytes_after_vg"))]
-        bad = [num(r, "trials") for r in rs if truthy(r, "oom")]
-        if fit:
-            ax.plot([t for t, _ in fit], [g for _, g in fit], marker=MARKER["enum"],
-                    color=COLOR["enum"], markeredgecolor="white", markeredgewidth=0.8,
-                    label=f"{lat} bd {bd}")
-        for t in bad:
-            # An OOM has no measurable height, so mark it on the capacity line:
-            # the point of the figure is where the arm stops, not how far past.
-            ax.plot([t], [card_gib], marker="x", color=COLOR["enum"], markersize=8,
-                    markeredgewidth=2.0)
-    ax.axhline(card_gib, color=INK_MUTED, linestyle="--", linewidth=1.0)
-    ax.text(0.01, card_gib, " A40 capacity  (x = did not fit)",
-            transform=ax.get_yaxis_transform(), va="bottom", fontsize=7, color=INK_MUTED)
-    ax.set_xlabel("trials (vmapped restarts)")
-    ax.set_ylabel("peak device memory (GiB)")
-    ax.set_title("Where the enumerated arm stops fitting")
-    if by_cfg:
-        ax.legend(loc="upper left")
+        chunk = r.get("branch_chunk_size") or ""
+        tag = f"{r['lattice']} bd {int(num(r, 'bond_dim'))}"
+        if chunk not in ("", "None"):
+            tag += f" chunk {int(float(chunk))}"
+        by_cfg[tag].append(r)
+
+    # One row per configuration rather than a line against trials. The amount an
+    # OOM'd run was asking for is NOT a smooth function of trial count -- a run
+    # that dies compiling the forward pass asks for less than one that got as far
+    # as the backward pass -- so joining these points would draw a trend that
+    # does not exist. Rows, read directly, cannot imply one.
+    entries = []
+    for tag, rs in by_cfg.items():
+        for r in sorted(rs, key=lambda r: -num(r, "trials")):
+            trials = int(num(r, "trials"))
+            if truthy(r, "oom"):
+                gib, fits, stage = requested_gib(r), False, str(r.get("failed_stage", ""))
+            else:
+                gib, fits, stage = num(r, "peak_bytes_after_vg") / 2 ** 30, True, ""
+            if np.isfinite(gib):
+                entries.append((f"{tag}, {trials} trial{'s' if trials != 1 else ''}",
+                                gib, fits, stage))
+    if not entries:
+        return
+    entries.sort(key=lambda e: e[1])
+    ys = np.arange(len(entries))
+    for y, (lab, gib, fits, stage) in zip(ys, entries):
+        ax.plot([0.5, gib], [y, y], color=COLOR["enum"], alpha=0.35, linewidth=1.4,
+                zorder=1, solid_capstyle="butt")
+        if fits:
+            ax.plot([gib], [y], marker=MARKER["enum"], color=COLOR["enum"], markersize=8,
+                    markeredgecolor="white", markeredgewidth=1.0, zorder=3)
+            ax.annotate(f"{gib:.1f} GiB", (gib, y), textcoords="offset points",
+                        xytext=(9, 0), va="center", fontsize=7, color=INK_2)
+        else:
+            ax.plot([gib], [y], marker="X", color=COLOR["enum"], markersize=9,
+                    markerfacecolor="white", markeredgecolor=COLOR["enum"],
+                    markeredgewidth=1.8, zorder=3)
+            short_stage = {"compile_forward": "fwd", "compile_value_and_grad": "grad",
+                           "process_died": "killed"}.get(stage, stage[:6])
+            ax.annotate(f"{gib:.0f} GiB ({short_stage})", (gib, y),
+                        textcoords="offset points", xytext=(9, 0), va="center",
+                        fontsize=7, color=INK_MUTED)
+    ax.axvline(card_gib, color=INK_MUTED, linestyle="--", linewidth=1.0)
+    # Named in the title rather than beside the line: every row extends across
+    # the capacity line, so an inline label collides with one of them whatever
+    # height it is given.
+    ax.set_xscale("log")
+    ax.set_xlim(0.5, max(g for _, g, _, _ in entries) * 6)
+    ax.set_yticks(ys)
+    ax.set_yticklabels([e[0] for e in entries], fontsize=7.5)
+    ax.set_ylim(-0.7, len(entries) - 0.3)
+    ax.set_xlabel("device memory (GiB, log scale)")
+    ax.set_title(f"Diamond = measured peak;  X = allocation refused\n"
+                 f"dashed line = A40 capacity ({card_gib:.0f} GiB)", fontsize=9.5)
+    ax.grid(True, axis="x", alpha=0.7, linewidth=0.6)
+    ax.grid(False, axis="y")
     fig.suptitle("Memory: the enumerated arm's binding constraint", y=1.03, fontsize=11)
     save(fig, outdir, "memory_frontier.png")
 
