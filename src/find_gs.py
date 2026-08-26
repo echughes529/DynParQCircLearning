@@ -325,7 +325,18 @@ class VariationalAnsatz(abc.ABC):
             qc = self._circuit_branch(params, branch)
             # MPSCircuit.expectation defaults to normalize=False, so
             # _energy_of_circuit already returns the unnormalised <phi|H|phi>.
-            return self._energy_of_circuit(qc), K.real(qc.get_norm()) ** 2
+            # <phi|phi> read straight off the orthogonality centre. NOT
+            # qc.get_norm()**2: get_norm computes sqrt(<phi|phi>), and squaring
+            # it back recovers the value but NOT a finite gradient, because
+            # d(sqrt(x))/dx = 1/(2 sqrt(x)) is infinite at x = 0 and autodiff
+            # differentiates the sqrt node before the square undoes it. Branch
+            # probabilities that are exactly zero are routine here -- measuring
+            # 1 on a qubit already in |0>, say -- so that path NaNs the whole
+            # trial. Summing |T|^2 directly is the same number with a gradient
+            # that stays finite (and correctly zero) on a dead branch.
+            centre = qc._mps.tensors[qc._mps.center_position]
+            den = K.real(K.sum(centre * K.conj(centre)))
+            return self._energy_of_circuit(qc), den
 
         branches = self._reset_branches
         chunk = getattr(self, "branch_chunk_size", None)
@@ -592,6 +603,17 @@ class VariationalAnsatz(abc.ABC):
                     # Sampled before the tracking blocks below, which build extra
                     # un-jitted circuits and would otherwise be charged to the
                     # training step's memory rather than to the diagnostics.
+                    #
+                    # Sampling first only protects `live`, though. `peak` is a
+                    # monotone high-water mark, so once track_bond_dim's extra
+                    # circuit builds have raised it, every later reading carries
+                    # them. So the two columns mean different things on a run
+                    # with tracking on:
+                    #   gpu_live_bytes  steady-state working set of the training
+                    #                   step alone -- clean, comparable per arm
+                    #   gpu_peak_bytes  high-water including the diagnostics
+                    # The uncontaminated peak comes from reset_impl_bench, which
+                    # runs each arm in its own process and does no tracking.
                     self.gpu_live_bytes[counter], self.gpu_peak_bytes[counter] = _device_memory_bytes()
                     self.host_rss_bytes[counter] = _host_peak_rss_bytes()
 

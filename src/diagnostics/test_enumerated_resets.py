@@ -271,6 +271,49 @@ def test_no_bond_growth():
               f"{before} -> {after}")
 
 
+def test_zero_probability_branch_gradient():
+    """A branch with probability exactly zero must not NaN the gradient.
+
+    Regression test. The estimator's denominator was originally computed as
+    qc.get_norm()**2, which is the right VALUE but the wrong gradient: get_norm
+    is sqrt(<phi|phi>), and d(sqrt(x))/dx = 1/(2 sqrt(x)) is infinite at x = 0,
+    so autodiff produced NaN on any branch of probability zero -- which is a
+    routine occurrence (measuring 1 on a qubit already in |0>). The NaN then
+    propagated through the sum and froze the whole trial. Summing |T|^2 off the
+    orthogonality centre is the same number with a finite gradient.
+    """
+    print("\n8. Zero-probability branches keep the gradient finite")
+
+    # The composition itself, isolated: this is the shape of the old bug.
+    z = jnp.zeros(4)
+    via_norm = jax.grad(lambda x: jnp.linalg.norm(x) ** 2)(z)
+    direct = jax.grad(lambda x: jnp.sum(x * jnp.conj(x)).real)(z)
+    check("sqrt-then-square gradient is NaN at zero (the bug)",
+          bool(jnp.all(jnp.isnan(via_norm))), f"{via_norm}")
+    check("direct sum-of-squares gradient is finite at zero (the fix)",
+          bool(jnp.all(jnp.isfinite(direct))), f"{direct}")
+
+    # End to end: every branch's gradient contribution must be finite, and a
+    # dead branch must contribute exactly zero rather than a NaN.
+    _, enum = make_pair(Lx=2, Ly=2, nlayers=2, h=0.3, reset_layers=None)
+    params = enum.initparams[0]
+    g = np.asarray(jax.grad(enum.energy_from_params)(params))
+    check("full gradient is finite", bool(np.isfinite(g).all()),
+          f"{int((~np.isfinite(g)).sum())} non-finite entries of {g.size}")
+
+    # Force a state whose reset qubit is exactly |0>, so branch 2 (measure 1)
+    # has identically zero weight, and differentiate through it.
+    def dead_branch_weight(p):
+        qc = enum._circuit_branch(p, jnp.asarray([2, 2], dtype=jnp.int32))
+        centre = qc._mps.tensors[qc._mps.center_position]
+        return K.real(K.sum(centre * K.conj(centre)))
+
+    gd = np.asarray(jax.grad(dead_branch_weight)(params))
+    check("gradient through a doubly-projected branch is finite",
+          bool(np.isfinite(gd).all()),
+          f"{int((~np.isfinite(gd)).sum())} non-finite entries")
+
+
 def test_branch_cap_raises():
     """An accidentally huge 3^R must fail loudly at construction time."""
     print("\n8. max_reset_branches guard")
@@ -329,6 +372,7 @@ def main():
     test_theta_gradient()
     test_deterministic_and_chunked()
     test_no_bond_growth()
+    test_zero_probability_branch_gradient()
     test_branch_cap_raises()
     test_end_to_end()
 

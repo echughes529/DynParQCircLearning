@@ -6,17 +6,31 @@ Run:
 
 WHY THIS EXISTS
 ---------------
-The two reset implementations do not report comparable energies during training.
-The purified path evaluates the reset channel exactly, so its reported value is
-the channel energy. The trajectory path reports the energy of ONE sampled branch,
-which is an unbiased estimate of that same quantity but carries the sampling
-noise of a single draw. Plotting one against the other and calling the difference
-"accuracy" would be comparing a quantity against an estimate of itself.
+The three reset implementations do not report comparable energies during
+training. Purified and enumerated both evaluate the reset channel exactly, so
+their reported value is the channel energy -- but at different chain lengths and
+therefore different truncation errors for the same bond dimension. The
+trajectory path reports the energy of ONE sampled branch, an unbiased estimate
+of that same quantity carrying the sampling noise of a single draw. Plotting any
+of these against the others and calling the difference "accuracy" would be
+comparing a quantity against a differently-biased estimate of itself.
 
 So every accuracy number in this investigation comes from here instead: take the
-parameters a run actually reached, and evaluate them with the purified circuit at
-a bond dimension high enough to be converged. That is one deterministic function
-applied to both arms, which makes the comparison meaningful.
+parameters a run actually reached, and evaluate them with ONE reference circuit
+at a bond dimension high enough to be converged. That is a single deterministic
+function applied to all three arms, which makes the comparison meaningful.
+
+CHOICE OF REFERENCE (--ref-mode)
+--------------------------------
+Purified is the default and the historical choice. Enumerated is the interesting
+alternative: it is equally exact, but runs on the bare nq-site chain rather than
+nq + 2R sites, so at 3x3 it is converged on 12 sites where purified needs 20.
+For a fixed compute budget that is a better-converged yardstick. It costs 3^R
+forward evaluations, which is affordable here because scoring needs no gradients.
+
+Scoring the same parameters under both references and finding the same answer is
+the strongest available check that the yardstick itself is sound -- if they
+disagree, at least one reference is under-resourced.
 
 Scoring happens offline, from parameters checkpointed during training, so the
 training jobs never pay for the high-bond-dimension reference evaluation.
@@ -55,14 +69,20 @@ def E0(Lx, Ly):
 
 def load_checkpoint(path):
     """Snapshots from an in-flight or finished run's checkpoint file."""
-    d = np.load(path)
-    return {
+    d = np.load(path, allow_pickle=True)
+    out = {
         "all_params": d["all_params"],          # (trials, snapshots, nparams)
         "all_energies": d["all_energies"],      # (trials, snapshots)
         "step_times": d["step_times"],
         "filled": int(d["nsnapshots_filled"]),
         "final_params": d["params"],
     }
+    # Self-describing checkpoints carry which arm produced them, so the label
+    # does not have to be supplied by hand and cannot be got wrong.
+    out["reset_mode"] = str(d["reset_mode"]) if "reset_mode" in d.files else None
+    out["bond_dim"] = int(d["bond_dim"]) if "bond_dim" in d.files else None
+    out["seed"] = int(d["seed"]) if "seed" in d.files else None
+    return out
 
 
 def load_hdf5(path, run_id=None):
@@ -90,7 +110,12 @@ def main():
     parser.add_argument("--lattice", required=True, help="e.g. 3x3")
     parser.add_argument("--ref-bond-dim", type=int, required=True,
                         help="bond dimension for the reference evaluation; must be at or "
-                             "above the purified requirement measured by bond_dim_requirement")
+                             "above the reference arm's requirement as measured by "
+                             "bond_dim_requirement")
+    parser.add_argument("--ref-mode", default="pur", choices=("pur", "enum"),
+                        help="which exact arm to use as the yardstick. pur is the default; "
+                             "enum is equally exact on a shorter chain (nq vs nq+2R sites), "
+                             "so it is better converged for the same bond dimension.")
     parser.add_argument("--howoften-tosave", type=int, default=10,
                         help="snapshot cadence of the run being scored, to recover step numbers")
     parser.add_argument("--every", type=int, default=1,
@@ -99,6 +124,13 @@ def main():
     parser.add_argument("--label", default="", help="free-text tag copied into every output row")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
+
+    if args.track_purity and args.ref_mode == "enum":
+        # Purity is read off the ancilla cut, and the enumerated reference has no
+        # ancillas -- purity_from_params refuses for exactly that reason. The
+        # purified reference is the one that can recover it.
+        parser.error("--track-purity needs --ref-mode pur: the enumerated reference "
+                     "is ancilla-free, so there is no cut to trace out.")
 
     Lx, Ly = (int(v) for v in args.lattice.split("x"))
     data = load_checkpoint(args.checkpoint) if args.checkpoint else load_hdf5(args.hdf5, args.run_id)
@@ -110,16 +142,25 @@ def main():
         raise SystemExit("all_params is all zeros -- the run was not launched with track_params=True, "
                          "so there is nothing to score.")
 
-    print(f"jax devices: {jax.devices()}")
-    print(f"scoring {args.lattice}: {trials} trials x {filled} filled snapshots, "
-          f"reference bond_dim={args.ref_bond_dim}")
+    # The arm being scored, taken from the checkpoint so it cannot be mislabelled.
+    scored_mode = data.get("reset_mode")
+    label = args.label or (f"{scored_mode}_{data.get('seed')}" if scored_mode else "")
 
-    # The reference is always the purified path: it evaluates the channel
-    # exactly, with no sampling, so it is the same function for both arms.
+    print(f"jax devices: {jax.devices()}")
+    print(f"scoring {args.lattice} {scored_mode or '(arm unknown)'} "
+          f"(trained at bond_dim={data.get('bond_dim')}, seed={data.get('seed')}): "
+          f"{trials} trials x {filled} filled snapshots")
+    print(f"reference: {args.ref_mode} at bond_dim={args.ref_bond_dim}")
+
+    # The reference is an EXACT arm -- purified or enumerated -- evaluated with
+    # no sampling, so it is the same deterministic function applied to all three
+    # arms' parameters.
     ref = ToricCodeAnsatz(
         Lx=Lx, Ly=Ly, nlayers=NLAYERS, reset_layers=RESET_LAYERS,
         trials=trials, seed=1, bond_dim=args.ref_bond_dim,
         use_optimal_ordering=True, use_trajectory_resets=False,
+        use_enumerated_resets=(args.ref_mode == "enum"),
+        max_reset_branches=3 ** 8,
         normalize_state=True, sparse=False, use_mps=True,
     )
     if ref.nparams != nparams:
@@ -141,7 +182,9 @@ def main():
         step = si * args.howoften_tosave
         for t in range(trials):
             rows.append(dict(
-                label=args.label, lattice=args.lattice, trial=t, snapshot=si, step=step,
+                label=label, lattice=args.lattice, trial=t, snapshot=si, step=step,
+                scored_mode=scored_mode, ref_mode=args.ref_mode,
+                trained_bond_dim=data.get('bond_dim'), seed=data.get('seed'),
                 energy_exact=float(energies[t]),
                 energy_reported=float(data["all_energies"][t, si]),
                 rel_error=float(abs(energies[t] - exact) / abs(exact)),
