@@ -72,9 +72,23 @@ class ResultSaver:
             # record unable to say what chain length produced it. Overlay those
             # from __dict__, skipping callables and anything the HDF5 type
             # switch cannot represent.
+            #
+            # The overlay is restricted to the attributes that existed when
+            # construction finished, which VariationalAnsatz.__post_init__
+            # records as _settings_attr_names. optimize() attaches its output
+            # arrays (allenergies, allparams, allgrads, all_bond_dims,
+            # step_times, the gpu_*/host_rss series) to the same instance, and
+            # an unrestricted overlay copied all of them into the settings
+            # group -- duplicating, in both the master and the per-run file,
+            # data the results group already holds. A settings object without
+            # the snapshot (a plain dataclass from elsewhere) keeps the old
+            # unrestricted behaviour.
             out = asdict(settings)
+            allowed = getattr(settings, '_settings_attr_names', None)
             for key, value in vars(settings).items():
                 if key in out or key.startswith('__') or callable(value):
+                    continue
+                if allowed is not None and key not in allowed:
                     continue
                 if value is None or isinstance(value, _SERIALIZABLE):
                     out[key] = value
