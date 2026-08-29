@@ -37,7 +37,7 @@ export PYTHONUNBUFFERED=1
 # is suspiciously close to the "33.8 vs 34.5 GB" figures previously quoted for
 # the enumerated arm, and would make any memory comparison between arms
 # meaningless. With this off, both nvidia-smi and the allocator report real use.
-export XLA_PYTHON_CLIENT_PREALLOCATE=false
+# export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 # --- Activate environment ---
 source /home/s1931382/dpqc_venv/bin/activate
