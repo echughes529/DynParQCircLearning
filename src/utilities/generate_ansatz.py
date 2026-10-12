@@ -28,7 +28,7 @@ tc.set_dtype("complex128")
 # whenever a kept singular value or a pair gap |s_i^2 - s_j^2| sits near
 # sqrt(eps), so raising eps caps the blowup that near-degenerate spectra feed
 # into the gradient (see src/diagnostics/svd_eps_blowup_training.py and
-# nan_capture_bd96.py). jaxsvd_bwd looks the name up in its module globals on
+# nan_capture_bd96.py at git tag archive/nan-svd-normalisation). jaxsvd_bwd looks the name up in its module globals on
 # every call, so rebinding it here -- before anything is traced -- changes the
 # compiled rule; eps is a constant in the traced HLO, so the persistent
 # compilation cache above keys patched and unpatched programs separately.
@@ -51,7 +51,8 @@ if _svd_bwd_eps:
 # jnp.linalg.svd becomes a batched cuSOLVER call, and the batched Jacobi kernel
 # deterministically NaNs single batch elements on the rank-deficient matrices
 # this ansatz produces (captured live at 3x3/bd=70 step 6 and 3x3/bd=96; see
-# src/diagnostics/nan_capture_bd96.py + fwd_svd_algorithm_test.py). Forcing the
+# src/diagnostics/nan_capture_bd96.py + fwd_svd_algorithm_test.py at git tag
+# archive/nan-svd-normalisation). Forcing the
 # QR kernel fixed the NaN, matched unbatched values to 13 digits, cut the worst
 # batch gradient norm 38.7 -> 2.5, and ran 3.3x FASTER (17.7 vs 58.4 s/step at
 # 3x3/bd=70/20 trials on an A40). _svd_jax re-imports `adaware_svd_jit` from
