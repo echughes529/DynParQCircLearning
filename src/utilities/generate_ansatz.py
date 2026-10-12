@@ -14,7 +14,10 @@ import tensorcircuit as tc
 import jax
 import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_compilation_cache_dir", "./jax_cache")
+# Anchored to the repo root, not the working directory: a relative "./jax_cache"
+# made a fresh cache wherever a job happened to be launched from (e.g. logs/).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+jax.config.update("jax_compilation_cache_dir", os.path.join(_REPO_ROOT, "jax_cache"))
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")

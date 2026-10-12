@@ -32,7 +32,9 @@ optr = ctg.ReusableHyperOptimizer(
     # max_time=120,
     max_repeats=200,
     progbar=True,
-    directory=True,
+    # directory=True would mean "./ctg_cache" relative to the working directory;
+    # pin it to the repo root so every run shares one cache.
+    directory=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ctg_cache"),
 )
 import warnings
 warnings.filterwarnings("ignore", message=".*The inputs or output of this tree are not ordered.*")
