@@ -523,10 +523,342 @@ def fig_convergence(scored, outdir, threshold=1e-3):
     save(fig, outdir, "convergence_by_seed.png")
 
 
+# ----------------------------------------------------------------------------
+# 6. MPS complexity through training
+# ----------------------------------------------------------------------------
+def _pick_lattice(rows, lattice=None):
+    """Restrict to one lattice, defaulting to the largest present.
+
+    Rows from different lattices must never be pooled: a 2x2 chain and a 3x3 chain
+    have different bond dimensions for the same physics, so a median over both
+    describes neither. read_many globs every CSV in the directory, so more than one
+    lattice being present is the normal case, not an edge case.
+    """
+    lattices = sorted({r.get("lattice") for r in rows if r.get("lattice")},
+                      key=lambda s: [int(v) for v in s.split("x")])
+    if not lattices:
+        return rows, None
+    chosen = lattice if lattice in lattices else lattices[-1]
+    return [r for r in rows if r.get("lattice") == chosen], chosen
+
+
+def _median_by_step(rows, key):
+    """Median of `key` per training step, across trials. Returns (steps, values).
+
+    Median rather than mean because trials are independent restarts and some of
+    them stall -- one stalled trial sitting at the exact cap would drag a mean up
+    and make the arm look permanently expensive.
+    """
+    by_step = defaultdict(list)
+    for r in rows:
+        v = num(r, key)
+        if np.isfinite(v):
+            by_step[num(r, "step")].append(v)
+    steps = sorted(s for s in by_step if np.isfinite(s))
+    return np.asarray(steps), np.asarray([np.median(by_step[s]) for s in steps])
+
+
+def fig_complexity_through_training(rows, outdir, tolerance=1e-6, lattice=None):
+    """How much MPS each arm has to carry, at every point along a run.
+
+    Two panels because the two questions are different and only one of them is
+    comparable across arms:
+
+      left   max bond dimension. Read WITHIN an arm, over training. Comparing it
+             between arms is unsound -- the trajectory chain is 12 sites at 3x3
+             and the purified chain is 20, so the widest bond is not the same cut.
+      right  total stored entries. This IS the cross-arm number: it is the actual
+             memory footprint and does not care how long the chain is.
+
+    Both comparisons get a row, because they answer different questions.
+
+      as-trained    each arm's own parameter history, rebuilt in its own mode.
+                    The literal question -- what did each simulation carry? -- but
+                    the two runs have drifted to different parameters, so a
+                    difference mixes "this representation is cheaper" with "these
+                    runs ended up somewhere else".
+      same-params   ONE parameter history rebuilt in both modes. Holding the
+                    parameters fixed is what makes a difference attributable to
+                    the reset implementation rather than to the optimisation path.
+    """
+    rows, lat = _pick_lattice(rows, lattice)
+    rows = [r for r in rows
+            if abs(num(r, "tolerance") - tolerance) < tolerance * 1e-6]
+    comparisons = [c for c in ("as_trained", "same_params")
+                   if any(r.get("comparison") == c for r in rows)]
+    if not comparisons:
+        return
+
+    fig, axes = plt.subplots(len(comparisons), 2, figsize=(9.4, 3.4 * len(comparisons)),
+                             squeeze=False)
+    titles = {
+        "as_trained": "as trained (each arm's own parameters)",
+        "same_params": "same parameters, both representations",
+    }
+    for row_i, comparison in enumerate(comparisons):
+        sub_rows = [r for r in rows if r.get("comparison") == comparison]
+        for col, (key, label) in enumerate((
+            ("max_bond_dim", "max bond dimension $\\chi$"),
+            ("mps_entries", "stored complex entries"),
+        )):
+            ax = axes[row_i][col]
+            for mode in ORDER:
+                sub = [r for r in sub_rows if r.get("rebuild_mode") == mode]
+                if not sub:
+                    continue
+                steps, vals = _median_by_step(sub, key)
+                if not len(steps):
+                    continue
+                ax.plot(steps, vals, color=COLOR[mode], marker=MARKER[mode],
+                        markevery=max(len(steps) // 12, 1), label=LABEL[mode])
+                # The exact cap is the widest bond the chain can carry at all; a
+                # curve sitting on it is a ceiling, not a measurement.
+                cap = num(sub[0], "exact_cap")
+                if key == "max_bond_dim" and np.isfinite(cap):
+                    ax.axhline(cap, color=COLOR[mode], linestyle=":",
+                               linewidth=1.0, alpha=0.6)
+                    ax.text(steps[-1], cap, f" exact cap {int(cap)} ", fontsize=6.5,
+                            color=COLOR[mode], va="bottom", ha="right")
+            ax.set_yscale("log")
+            ax.set_xlabel("training step")
+            ax.set_ylabel(label)
+            ax.set_title(titles[comparison], fontsize=9)
+            tidy(ax)
+        axes[row_i][0].legend(loc="lower left")
+
+    fig.suptitle(f"MPS complexity through training, {lat} "
+                 f"(tolerance {tolerance:g})", fontsize=9.5)
+    fig.tight_layout()
+    save(fig, outdir, "complexity_through_training.png")
+
+
+def fig_complexity_by_lattice(rows, outdir, tolerance=1e-6, comparison="as_trained",
+                              metric="max_bond_dim"):
+    """One panel per lattice: MPS complexity against training step, both arms.
+
+    The same view as fig_complexity_through_training's top-left panel, replicated
+    across lattices so the trend with system size is visible in one figure.
+
+    Panels do NOT share a y-axis. The exact cap is 4 at 2x2, 8 at 3x2 and 64 at
+    3x3 for the trajectory chain, and 8 / 32 / 1024 for the purified one, so a
+    shared axis would flatten the small lattices into the floor. Each panel is
+    annotated with its own caps instead.
+
+    A flat line pinned to the cap is a CEILING, not a measurement -- the chain is
+    maximally entangled and there is nothing above to ask for. At 2x2 both arms
+    sit at 4 for the whole run, which is why that panel looks empty: it is empty.
+    """
+    rows = [r for r in rows
+            if r.get("comparison") == comparison
+            and abs(num(r, "tolerance") - tolerance) < tolerance * 1e-6]
+    if not rows:
+        return
+    lattices = sorted({r["lattice"] for r in rows if r.get("lattice")},
+                      key=lambda s: [int(v) for v in s.split("x")])
+    if not lattices:
+        return
+
+    label = {"max_bond_dim": "max bond dimension $\\chi$",
+             "mps_entries": "stored complex entries"}[metric]
+    fig, axes = plt.subplots(1, len(lattices), figsize=(3.5 * len(lattices), 3.5),
+                             squeeze=False)
+    for ax, lat in zip(axes[0], lattices):
+        sub_lat = [r for r in rows if r["lattice"] == lat]
+        for mode in ORDER:
+            sub = [r for r in sub_lat if r.get("rebuild_mode") == mode]
+            if not sub:
+                continue
+            steps, vals = _median_by_step(sub, metric)
+            if not len(steps):
+                continue
+            ax.plot(steps, vals, color=COLOR[mode], marker=MARKER[mode],
+                    markevery=max(len(steps) // 10, 1), label=SHORT[mode])
+            cap = num(sub[0], "exact_cap")
+            if metric == "max_bond_dim" and np.isfinite(cap):
+                ax.axhline(cap, color=COLOR[mode], linestyle=":", linewidth=1.0, alpha=0.6)
+                ax.text(0.99, cap, f"cap {int(cap)} ", transform=ax.get_yaxis_transform(),
+                        fontsize=6.5, color=COLOR[mode], va="bottom", ha="right")
+        ax.set_yscale("log")
+        ax.set_xlabel("training step")
+        chain = {m: int(num([r for r in sub_lat if r["rebuild_mode"] == m][0], "chain"))
+                 for m in ORDER if any(r["rebuild_mode"] == m for r in sub_lat)}
+        ax.set_title(f"{lat}   " + " / ".join(f"{SHORT[m][:4]} {c} sites"
+                                              for m, c in chain.items()), fontsize=9)
+        tidy(ax)
+    axes[0][0].set_ylabel(label)
+    axes[0][0].legend(loc="lower left")
+    fig.suptitle(f"MPS complexity through training "
+                 f"(tolerance {tolerance:g})", fontsize=9.5)
+    fig.tight_layout()
+    save(fig, outdir, f"complexity_by_lattice_{metric}.png")
+
+
+def fig_complexity_tolerance(rows, outdir, lattice=None):
+    """Does the answer depend on where the truncation threshold is put?
+
+    A threshold criterion bounds the norm of the discarded tail rather than each
+    singular value individually, which on a near-degenerate spectrum can cut a run
+    of small-but-similar values -- the reason make_split_conf declines to use one
+    during training. If the reported bond dimension moves a lot between
+    tolerances, that is happening and the number needs the caveat. If the curves
+    are nearly parallel, it is not.
+    """
+    rows, lat = _pick_lattice(rows, lattice)
+    # same_params where available (the controlled comparison), otherwise
+    # as_trained, so the check is still visible while a sweep is in flight.
+    for comparison in ("same_params", "as_trained"):
+        sub = [r for r in rows if r.get("comparison") == comparison]
+        if sub:
+            rows = sub
+            break
+    else:
+        return
+    tols = sorted({num(r, "tolerance") for r in rows if np.isfinite(num(r, "tolerance"))})
+    if len(tols) < 2:
+        return
+    fig, axes = plt.subplots(1, len(ORDER[:2]), figsize=(9.4, 3.4), sharey=True)
+    for ax, mode in zip(np.atleast_1d(axes), ("traj", "pur")):
+        for alpha, tol in zip(np.linspace(0.35, 1.0, len(tols)), tols):
+            sub = [r for r in rows if r.get("rebuild_mode") == mode
+                   and abs(num(r, "tolerance") - tol) < tol * 1e-6]
+            if not sub:
+                continue
+            steps, vals = _median_by_step(sub, "max_bond_dim")
+            ax.plot(steps, vals, color=COLOR[mode], alpha=alpha,
+                    label=f"tol {tol:g}")
+        ax.set_yscale("log")
+        ax.set_xlabel("training step")
+        ax.set_title(SHORT[mode], fontsize=9)
+        # A pass still in flight leaves one arm empty; legend() warns on that.
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(loc="lower left")
+        tidy(ax)
+    np.atleast_1d(axes)[0].set_ylabel("max bond dimension $\\chi$")
+    fig.suptitle(f"Measured bond dimension against truncation tolerance ({lat})",
+                 fontsize=9.5)
+    fig.tight_layout()
+    save(fig, outdir, "complexity_tolerance_sensitivity.png")
+
+
+# ----------------------------------------------------------------------------
+# 7. Why the trajectory approximation stops being one
+# ----------------------------------------------------------------------------
+def fig_branch_occupancy(rows, outdir, lattice=None):
+    """The reset channel collapsing onto a single Kraus branch -- per trial.
+
+    Plotted per trial rather than as a median across them, because the median
+    hides the finding. The trials separate sharply: the ones that reach the
+    ground state drive their reset angles to zero, and the ones that stall leave
+    them near their initial value. A median over both families describes neither.
+
+    Left: probability that no reset fires anywhere, prod_r (1 - p_r).
+    Right: participation ratio, the effective number of the 3^R branches actually
+    carrying weight. 1 means the channel has collapsed onto a single branch, at
+    which point "sample one branch" and "evaluate the channel" are the same
+    computation and the trajectory arm stops approximating anything.
+
+    Each trial is labelled with the energy its training run actually reached, so
+    the association between switching the resets off and converging is visible
+    rather than asserted.
+    """
+    rows, lat = _pick_lattice(rows, lattice)
+    if not rows:
+        return
+    trials = sorted({int(num(r, "trial")) for r in rows if np.isfinite(num(r, "trial"))})
+    if not trials:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(9.4, 3.4))
+
+    for trial in trials:
+        sub = sorted((r for r in rows if int(num(r, "trial")) == trial),
+                     key=lambda r: num(r, "step"))
+        if not sub:
+            continue
+        steps = np.asarray([num(r, "step") for r in sub])
+        final_e = num(sub[-1], "training_energy")
+        # Converged trials get the trajectory colour; stalled ones are muted, so
+        # the two families are separable without reading the legend.
+        converged = np.isfinite(final_e) and abs(final_e + 13.0) / 13.0 < 1e-3
+        color = TRAJ if converged else INK_MUTED
+        label = f"trial {trial}:  $E={final_e:.2f}$"
+        axes[0].plot(steps, [num(r, "p_no_reset_anywhere") for r in sub],
+                     color=color, linewidth=2.0 if converged else 1.2,
+                     alpha=1.0 if converged else 0.8, label=label)
+        axes[1].plot(steps, [num(r, "branch_participation") for r in sub],
+                     color=color, linewidth=2.0 if converged else 1.2,
+                     alpha=1.0 if converged else 0.8, label=label)
+
+    axes[0].set_ylim(0, 1.02)
+    axes[0].set_ylabel("P(no reset fires anywhere)")
+    axes[0].legend(loc="upper left", fontsize=7)
+
+    nbranch = num(rows[0], "n_branches")
+    if np.isfinite(nbranch):
+        axes[1].axhline(nbranch, color=INK_MUTED, linestyle=":", linewidth=1.0)
+        axes[1].text(0.99, nbranch, f"{int(nbranch)} ",
+                     transform=axes[1].get_yaxis_transform(),
+                     fontsize=6.5, color=INK_MUTED, va="bottom", ha="right")
+    axes[1].axhline(1.0, color=INK_MUTED, linestyle="--", linewidth=1.0)
+    axes[1].text(0.01, 1.0, " 1", transform=axes[1].get_yaxis_transform(),
+                 fontsize=6.5, color=INK_MUTED, va="bottom", ha="left")
+    axes[1].set_yscale("log")
+    axes[1].set_ylabel("effective branches (participation ratio)")
+
+    for ax in axes:
+        ax.set_xlabel("training step")
+        tidy(ax)
+    fig.suptitle("Reset branch occupancy through training", fontsize=9.5)
+    fig.tight_layout()
+    save(fig, outdir, "branch_occupancy.png")
+
+
+def fig_traj_energy_gap(rows, outdir, lattice=None):
+    """How far the sampled energy sits from the exact channel energy, over training.
+
+    `spread` is the standard deviation across independent draws at fixed
+    parameters -- the noise a single draw feeds the optimiser. `|gap|` is the
+    distance from the sample mean to the exact channel energy.
+
+    The gap does not go to zero purely because the estimator is unbiased: once one
+    branch carries almost all the weight, every draw in a finite sample takes it,
+    the spread reads exactly zero, and the residual gap is the contribution of the
+    branches never drawn. Both shrink together as the reset angles go to zero,
+    which is the point -- but they are different quantities and the figure labels
+    them as such rather than calling the gap "bias".
+    """
+    rows, _ = _pick_lattice(rows, lattice)
+    if not rows:
+        return
+    # The CSV stores the signed difference; the magnitude is what a log axis can
+    # show, and the sign carries no information here (which branch happened to be
+    # drawn decides it).
+    rows = [dict(r, abs_gap=abs(num(r, "bias"))) for r in rows]
+    fig, ax = plt.subplots(figsize=(5.6, 3.4))
+    steps, gap = _median_by_step(rows, "abs_gap")
+    _, spread = _median_by_step(rows, "energy_traj_std")
+    ax.plot(steps, np.maximum(gap, 1e-16), color=TRAJ,
+            label="|sample mean $-$ exact|")
+    ax.plot(steps, np.maximum(spread, 1e-16), color=INK_2, linestyle="--",
+            label="spread across draws")
+    ax.set_yscale("log")
+    ax.set_xlabel("training step")
+    ax.set_ylabel("energy (absolute)")
+    ax.set_title("Sampled energy against the exact channel energy", fontsize=9.5)
+    ax.legend(loc="lower left")
+    tidy(ax)
+    fig.tight_layout()
+    save(fig, outdir, "traj_energy_gap.png")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--indir", default="outputs/three_resets")
     parser.add_argument("--outdir", default="docs/figures")
+    parser.add_argument("--lattice", default=None,
+                        help="lattice for the through-training figures; defaults to the "
+                             "largest one present. Rows from different lattices are never "
+                             "pooled -- the same physics has different bond dimensions on "
+                             "different chain lengths.")
     args = parser.parse_args()
 
     style()
@@ -534,16 +866,25 @@ def main():
     bench_rows = read_many(args.indir, "bench") + read_many(args.indir, "probe")
     run_rows = read_many(args.indir, "runs")
     scored_rows = read_many(args.indir, "scored")
+    complexity_rows = read_many(args.indir, "complexity_through_training")
+    approx_rows = read_many(args.indir, "traj_approximation")
 
     print(f"inputs from {args.indir}: {len(bd_rows)} bond-dim rows, "
           f"{len(bench_rows)} bench rows, {len(run_rows)} run rows, "
-          f"{len(scored_rows)} scored rows")
+          f"{len(scored_rows)} scored rows, {len(complexity_rows)} complexity rows, "
+          f"{len(approx_rows)} approximation rows")
 
     fig_bond_dim(bd_rows, args.outdir)
     fig_cost(bench_rows, args.outdir)
     fig_memory(bench_rows, args.outdir)
     fig_accuracy(scored_rows, run_rows, args.outdir)
     fig_convergence(scored_rows, args.outdir)
+    fig_complexity_through_training(complexity_rows, args.outdir, lattice=args.lattice)
+    fig_complexity_by_lattice(complexity_rows, args.outdir)
+    fig_complexity_by_lattice(complexity_rows, args.outdir, metric="mps_entries")
+    fig_complexity_tolerance(complexity_rows, args.outdir, lattice=args.lattice)
+    fig_branch_occupancy(approx_rows, args.outdir, lattice=args.lattice)
+    fig_traj_energy_gap(approx_rows, args.outdir, lattice=args.lattice)
 
 
 if __name__ == "__main__":
