@@ -462,8 +462,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
             reset_vals = jax.random.uniform(
                 key_reset,
                 shape=[self.trials, len(reset_indices)],
-                minval= jnp.pi/2.0 - 0.2,
-                maxval= jnp.pi/2.0- 0.1
+                minval= 0.05,
+                maxval= jnp.pi/2.0 - 0.1
             )
 
             params = params.at[:, reset_indices].set(reset_vals)
