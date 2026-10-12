@@ -196,6 +196,25 @@ class VariationalAnsatz(abc.ABC):
         self.initparams = self._initialise_parameters()
         self._costs_vmapped, self._cost_vvag = _make_jit_helpers(self)
 
+        # Everything that exists on the instance at this point is configuration:
+        # declared dataclass fields plus whatever the subclass computed in its own
+        # __post_init__ (total_resets, n_mps_qubits, nancillas, the MPS ordering,
+        # ordering_search_seconds). Everything attached AFTER this line is output
+        # -- optimize() hangs allenergies, allparams, allgrads, all_bond_dims,
+        # step_times and the memory arrays off self, all of which are already
+        # written to the HDF5 results group.
+        #
+        # ResultSaver._serialize_settings uses this snapshot to tell the two
+        # apart. Without it the settings group picked up every result array as
+        # well, so each run's history was stored twice per file and in both the
+        # master and the per-run file. Recording names rather than values keeps
+        # this cheap and keeps it honest: the values are serialized later, from
+        # whatever the attributes hold at save time.
+        #
+        # Subclasses must therefore call super().__post_init__() LAST, which
+        # ToricCodeAnsatz and OneDBrickwork both do.
+        self._settings_attr_names = frozenset(vars(self))
+
     @property
     def reset_mode(self) -> str:
         """Which of the three reset implementations this ansatz uses.
@@ -486,9 +505,23 @@ class VariationalAnsatz(abc.ABC):
         nsnapshots = 1 + (self.maxiter - 1) // self.howoften_tosave
         self.allpurities = np.zeros((self.trials, nsnapshots))
         self.allenergies = np.zeros((self.trials, nsnapshots))
-        self.allparams = np.zeros((self.trials, nsnapshots, self.nparams))
-        self.allgrads = np.zeros((self.trials, nsnapshots, self.nparams))
         self.all_bond_dims = np.zeros((self.trials, nsnapshots))
+
+        # The two per-parameter histories are the only arrays here whose size
+        # grows with nparams, and both default to off. Allocated unconditionally
+        # they stayed all-zeros for a whole run, yet were still compressed into
+        # every checkpoint and written to HDF5 -- ~9 MB of zeros per run at
+        # 4x3/trials=10/maxiter=1500, and worse the larger the configuration.
+        # The empty form keeps ndim == 3, which is what every consumer checks
+        # (plot_training_curve_tc.plotting_thetas, plotting_gradient_norms and
+        # their counterparts in plot_bond_dim_by_reset_config all raise on
+        # `all_param.ndim != 3`), so an untracked run hands them a well-formed
+        # array with no snapshots rather than a wrongly-shaped one. Those
+        # consumers are gated on the same track flags anyway.
+        history_snapshots = nsnapshots if track_params else 0
+        self.allparams = np.zeros((self.trials, history_snapshots, self.nparams))
+        grad_snapshots = nsnapshots if track_grads else 0
+        self.allgrads = np.zeros((self.trials, grad_snapshots, self.nparams))
         self.singular_values_per_step = [None] * nsnapshots if track_singular_values_per_step else None
         self.reset_thetas_per_step = [None] * nsnapshots if track_singular_values_per_step else None
 
