@@ -4,7 +4,10 @@
 # Runs whatever python command is passed in DIAG_CMD, with the same environment,
 # logging and per-run directory conventions as run_plot_training_curve_tc.sh.
 #
-# Usage:
+# Normally you don't call this directly: submit with ./submit_diag.sh, which
+# base64-encodes the command (see COMMAS below) and sbatches this file.
+#
+# Usage (direct):
 #   sbatch --job-name=bdreq --time=02:00:00 \
 #     --export=ALL,DIAG_CMD="python -m src.diagnostics.bond_dim_requirement --lattices 3x3" \
 #     run_diag.sh
