@@ -79,7 +79,17 @@ NLAYERS = 2
 RESET_LAYERS = [1]
 SEED = 2026          # matches the converged 3x3 run stored in results/toriccode.h5
 
-MODES = ("traj", "pur", "enum")
+MODES = ("traj", "pur", "enum", "none")
+
+# `none` is the reset-free control: the same ansatz with reset_layers=[] instead
+# of [1], so the R reset events are deleted and nothing else changes. It shares
+# the trajectory arm's ancilla-free nq-site chain and its exact cap, and with
+# zero reset events its state is deterministic, so one sample per rung suffices.
+#
+# It answers the half of "are resets cheaper" that a fixed-bond-dimension bench
+# cannot: K1 and K2 are projectors, so a reset can only reduce entanglement, and
+# the reset-free circuit should therefore need a bond dimension at least as
+# large as the trajectory arm's. How much larger is the measurement.
 
 # The enumerated arm runs on the same nq-site chain as the trajectory arm, and
 # _branch_reset applies its 2x2 Kraus factor at the orthogonality centre, which
@@ -102,6 +112,15 @@ LADDERS = {
     ("4x4", "traj"): [32, 64, 96, 128, 192, 256],
     ("4x4", "enum"): [32, 64, 96, 128, 192, 256],
     ("4x4", "pur"): [64, 128, 192, 256],
+    # The reset-free control shares the trajectory chain, so it gets the
+    # trajectory ladder -- extended upwards, because deleting the resets can
+    # only ever push the requirement up and a ladder that stops where traj
+    # passes would report "not reached" instead of a number.
+    ("2x2", "none"): [2, 3, 4],
+    ("3x2", "none"): [4, 6, 8],
+    ("3x3", "none"): [8, 16, 24, 32, 48, 64],
+    ("4x3", "none"): [16, 32, 48, 64, 96, 128, 192, 256],
+    ("4x4", "none"): [32, 64, 96, 128, 192, 256],
 }
 
 
@@ -114,13 +133,16 @@ def lattice_facts(Lx, Ly):
         "nq": nq,
         "R": R,
         "nbranches": 3 ** R,
-        # Both ancilla-free arms share the bare system chain; only the purified
-        # one pays 2 sites per reset event.
+        # Every ancilla-free arm shares the bare system chain -- including the
+        # reset-free control, which simply has no reset events at all; only the
+        # purified one pays 2 sites per reset event.
         "traj_chain": nq,
         "enum_chain": nq,
+        "none_chain": nq,
         "pur_chain": nq + 2 * R,
         "traj_cap": 2 ** (nq // 2),
         "enum_cap": 2 ** (nq // 2),
+        "none_cap": 2 ** (nq // 2),
         "pur_cap": 2 ** ((nq + 2 * R) // 2),
         "E0": -(stars + plaquettes),
     }
@@ -133,10 +155,13 @@ def build(Lx, Ly, mode, bond_dim, use_optimal_ordering=True):
     which would be wasted work if repeated per rung of the ladder.
     """
     return ToricCodeAnsatz(
-        Lx=Lx, Ly=Ly, nlayers=NLAYERS, reset_layers=RESET_LAYERS,
+        Lx=Lx, Ly=Ly, nlayers=NLAYERS,
+        # An empty list, not None: None means "resets on every layer", [] means
+        # no reset events at all, which is the `none` control.
+        reset_layers=([] if mode == "none" else RESET_LAYERS),
         trials=1, seed=SEED, bond_dim=bond_dim,
         use_optimal_ordering=use_optimal_ordering,
-        use_trajectory_resets=(mode == "traj"),
+        use_trajectory_resets=(mode in ("traj", "none")),
         use_enumerated_resets=(mode == "enum"),
         # 3^R branches: 81 at 3x3 but 729 at 4x3, above the default guard of 512.
         # Affordable here because this diagnostic walks the branches one at a
@@ -177,9 +202,13 @@ def measure(ansatz, params, mode, rng):
     if mode == "enum":
         return measure_enum(ansatz, params)
 
-    if mode == "traj":
+    if mode in ("traj", "none"):
+        # With zero reset events there is only one state to sample: the status
+        # vector is empty, so every draw builds the identical circuit. Sampling
+        # it 20 times would cost 20x and report the same number.
+        nsamples = N_TRAJ_SAMPLES if ansatz.total_resets else 1
         weights, energies, norm_energies, maxbds = [], [], [], []
-        for _ in range(N_TRAJ_SAMPLES):
+        for _ in range(nsamples):
             status = jnp.asarray(rng.uniform(size=ansatz.total_resets))
             qc, _ = ansatz._circuit_traj(params, status)
             w = discarded_weight(qc)
@@ -199,7 +228,7 @@ def measure(ansatz, params, mode, rng):
             "energy_normalised": float(np.mean(norm_energies)),
             "energy_std": float(np.std(energies)),
             "max_bond_dim": int(np.max(maxbds)),
-            "n_states": N_TRAJ_SAMPLES,
+            "n_states": nsamples,
         }
 
     qc = ansatz._circuit(params)
@@ -338,6 +367,19 @@ def run_lattice(Lx, Ly, rows, use_optimal_ordering=True, extra_params=None,
         if converged is not None:
             param_sets["converged"] = converged
         param_sets.update(extra_params or {})
+
+        # Externally supplied vectors (stored runs, checkpoints) were trained on
+        # an arm with resets, so they carry one theta per reset event. The `none`
+        # control has none of those, and its nparams is correspondingly smaller.
+        # Feeding a mismatched vector in would raise inside the builder half an
+        # hour into a ladder, so drop it here and say so.
+        wrong_size = {n: len(p) for n, p in param_sets.items()
+                      if n != "init" and len(p) != ansatz.nparams}
+        for name in wrong_size:
+            del param_sets[name]
+        if wrong_size:
+            print(f"  skipping param set(s) {wrong_size} for mode={mode}: this arm takes "
+                  f"{ansatz.nparams} parameters (reset thetas differ between arms)")
 
         for pname, params in param_sets.items():
             print(f"\n  --- {key} {mode} params={pname} (build {build_s:.1f}s, "

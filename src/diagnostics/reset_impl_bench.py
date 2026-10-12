@@ -1,8 +1,29 @@
-"""Cost and memory anatomy of the three reset implementations.
+"""Cost and memory anatomy of the reset implementations.
 
 Run:
     python -m src.diagnostics.reset_impl_bench --configs 3x3:traj:64,3x3:pur:104,3x3:enum:64
+    python -m src.diagnostics.reset_impl_bench --configs 3x3:none:64,3x3:traj:64
     python -m src.diagnostics.reset_impl_bench --configs 4x3:enum:128 --trial-ladder 10,4,2,1
+
+THE `none` ARM
+--------------
+`none` is the reset-free control, and it exists to answer a different question
+from the other three: not "which way of applying resets is cheapest" but "does
+applying resets at all make the simulation cheaper or dearer". It is the SAME
+ansatz with reset_layers=[] instead of [1], so the reset events are deleted and
+nothing else changes -- same Cartan blocks, same ordering search, same
+ancilla-free nq-site chain, same trajectory estimator (with zero reset events
+the DiCE box is exp(0-0)=1 and the score term vanishes identically, so the
+energy is deterministic and plain backprop is exact).
+
+That leaves exactly one difference between `none` and `traj`: whether the R
+reset operations fire. Two effects pull in opposite directions and this bench
+measures their sum. Resets cost gates and SVDs, which is dearer; but K1 and K2
+are projectors, so a reset can only ever *reduce* entanglement, which is
+cheaper. The bench holds bond_dim fixed, so it sees the first effect plus
+whatever the second buys within that cap. The part it cannot see -- whether the
+reset-free circuit would have needed a LARGER cap to be accurate -- is what
+bond_dim_requirement.py measures, and both halves are needed for a verdict.
 
 Companion to bond_dim_requirement.py. That script answers "what bond dimension
 does each path need"; this one answers "what does that setting cost per
@@ -60,7 +81,7 @@ NLAYERS = 2
 RESET_LAYERS = [1]
 SEED = 2026
 REPEATS = 5
-MODES = ("traj", "pur", "enum")
+MODES = ("traj", "pur", "enum", "none")
 
 
 def time_call(fn, *args):
@@ -76,10 +97,18 @@ def time_call(fn, *args):
 
 def build_ansatz(Lx, Ly, mode, bond_dim, trials, n_trajectories, branch_chunk_size=None):
     return ToricCodeAnsatz(
-        Lx=Lx, Ly=Ly, nlayers=NLAYERS, reset_layers=RESET_LAYERS,
+        Lx=Lx, Ly=Ly, nlayers=NLAYERS,
+        # An empty list, not None: None means "resets on every layer". [] means
+        # total_resets=0, which is the reset-free control.
+        reset_layers=([] if mode == "none" else RESET_LAYERS),
         trials=trials, seed=SEED, bond_dim=bond_dim,
         use_optimal_ordering=True,
-        use_trajectory_resets=(mode == "traj"),
+        # `none` deliberately goes through the trajectory code path too. Routing
+        # it through the plain unitary ansatz instead would change the circuit
+        # (4 Cartan blocks per plaquette rather than 3), skip the ordering
+        # search, and use a different estimator -- three confounds on top of the
+        # one thing being measured.
+        use_trajectory_resets=(mode in ("traj", "none")),
         use_enumerated_resets=(mode == "enum"),
         # 3^R: 81 at 3x3, 729 at 4x3. The default guard of 512 would refuse 4x3,
         # and refusing it is the wrong answer here -- whether it fits is the
@@ -115,11 +144,14 @@ def bench(Lx, Ly, mode, bond_dim, trials, n_trajectories, branch_chunk_size=None
     params = jnp.asarray(ansatz.initparams)
     rng = np.random.default_rng(7)
 
-    # All three arms are driven through the same vmapped-and-jitted callables the
+    # Every arm is driven through the same vmapped-and-jitted callables the
     # optimiser itself uses, so these are the real per-step costs rather than a
-    # hand-built approximation. Only the trajectory arm takes extra positional
-    # arguments; enumerated and purified share the plain single-argument form.
-    if mode == "traj":
+    # hand-built approximation. Only the trajectory-driven arms take extra
+    # positional arguments; enumerated and purified share the plain
+    # single-argument form. Keyed off the flag rather than the mode string so
+    # `none` -- which is trajectory-driven with zero reset events, hence a
+    # status array of width 0 -- follows the same path as `traj`.
+    if ansatz.use_trajectory_resets:
         status_shape = (trials, n_trajectories, ansatz.total_resets)
         baseline = jnp.zeros(trials)
 
@@ -168,7 +200,7 @@ def bench(Lx, Ly, mode, bond_dim, trials, n_trajectories, branch_chunk_size=None
     # traced graph, not the work per step.
     called, called_tn, restore = tap_backends()
     try:
-        if mode == "traj":
+        if ansatz.use_trajectory_resets:
             qc, _ = ansatz._circuit_traj(params[0], jnp.asarray(rng.uniform(size=ansatz.total_resets)))
         elif mode == "enum":
             # One branch, not all 3^R: this counts the per-branch gate-splitting
