@@ -13,8 +13,8 @@ reduced density matrix obtained by tracing out the ancillas directly -- the
 check that actually confirms the branch decomposition reconstructs the true
 mixed state, not just that probabilities happen to sum to 1.
 
-Run with: pytest src/diagnostics/test_reset_branches.py -v
-Or directly for a printed summary table: python -m src.diagnostics.test_reset_branches
+Run with: pytest tests/test_reset_branches.py -v
+Or directly for a printed summary table: python -m tests.test_reset_branches
 """
 
 import numpy as np

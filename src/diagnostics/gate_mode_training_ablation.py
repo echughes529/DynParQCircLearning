@@ -25,7 +25,7 @@ import sys
 import types
 
 # TensorFlow is only needed by unrelated legacy constructors in
-# generate_ansatz; stub it unconditionally -- see test_mps_gate_paths.py for
+# generate_ansatz; stub it unconditionally -- see tests/test_mps_gate_paths.py for
 # why (some environments have a TF/sklearn build incompatible with the
 # installed NumPy that crashes hard on import, not just raises cleanly).
 sys.modules["tensorflow"] = types.ModuleType("tensorflow")

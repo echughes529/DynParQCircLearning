@@ -9,7 +9,7 @@ import tensorcircuit as tc
 
 # TensorFlow is only needed by unrelated legacy constructors in
 # generate_ansatz; keep this focused test runnable with the MPS dependencies.
-if importlib.util.find_spec("tensorflow") is None:
+if "tensorflow" not in sys.modules and importlib.util.find_spec("tensorflow") is None:
     sys.modules["tensorflow"] = types.ModuleType("tensorflow")
 
 from src.utilities.generate_ansatz import construct_unitary_circuit_brickwork

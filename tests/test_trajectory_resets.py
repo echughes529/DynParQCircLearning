@@ -29,7 +29,7 @@ estimator design exists to avoid, and it is invisible to every other test.
 
 Run:
     source /home/s1931382/dpqc_venv/bin/activate
-    python -m src.diagnostics.test_trajectory_resets
+    python -m tests.test_trajectory_resets
 """
 
 import itertools

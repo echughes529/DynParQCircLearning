@@ -3,7 +3,7 @@
 Canonical copy of the ``tap_backends`` helper originally written in
 ``src/examples/test.py`` (that file deliberately stays dependency-free for
 its own Sections 1-3, so it keeps its own copy rather than importing this
-one). New diagnostics -- see ``test_mps_gate_paths.py`` and
+one). New diagnostics -- see ``tests/test_mps_gate_paths.py`` and
 ``benchmark_mps_gate_paths.py`` -- should import from here instead of adding
 a third copy.
 """

@@ -29,7 +29,7 @@ than only through a sampling probability.
 
 Run:
     source /home/s1931382/dpqc_venv/bin/activate
-    python -m src.diagnostics.test_enumerated_resets
+    python -m tests.test_enumerated_resets
 """
 
 import itertools

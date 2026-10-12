@@ -357,7 +357,7 @@ def _decomposed_ccx(qc, c0, c1, target):
     construct_dissipative_ansatz_genresets) -- this decomposition was not
     required for MPSCircuit compatibility. It's kept as the default/legacy
     path pending correctness+gradient validation of toffoli_mode="direct"
-    (see src/diagnostics/test_mps_gate_paths.py); it may be a workaround for
+    (see tests/test_mps_gate_paths.py); it may be a workaround for
     a real numerical issue hit during the original MPS port (git history:
     commit 294afef, "works for 2x2, strange results for 3x2"), not merely an
     API-compatibility shim.
@@ -421,7 +421,7 @@ def _sampled_reset(qc, k, theta, u, force=None):
         force: debug hook. When set to 0, 1 or 2, takes that branch instead of
            sampling (log_w still accumulates the forced branch's log-prob), so
            tests can enumerate all branches exactly instead of relying on Monte
-           Carlo. See src/diagnostics/test_trajectory_resets.py.
+           Carlo. See tests/test_trajectory_resets.py.
     """
     # Moving the orthogonality center to k makes every other tensor an isometry,
     # so site k alone carries the Born probabilities of qubit k.

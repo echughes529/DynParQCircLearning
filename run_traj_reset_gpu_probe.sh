@@ -62,5 +62,5 @@ export DPQC_OUTDIR="$RUN_DIR"
 # is the already-diagnosed cuSOLVER batched-Jacobi failure. Keep the QR forward
 # kernel on for every trajectory-mode run.
 export DPQC_SVD_FWD_ALG=qr
-python -m src.diagnostics.test_trajectory_resets
+python -m tests.test_trajectory_resets
 echo "Job finished with exit code: $?"

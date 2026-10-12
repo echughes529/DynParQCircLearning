@@ -57,7 +57,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     bond_dim: Optional[int] = None
     use_optimal_ordering: bool = True
 
-    # SVD-reduction feature flags (see src/diagnostics/test_mps_gate_paths.py
+    # SVD-reduction feature flags (see tests/test_mps_gate_paths.py
     # and src/diagnostics/benchmark_mps_gate_paths.py for correctness/perf
     # validation before flipping either default).
     cartan_mode: str = "fused"     # "separate" or "fused"
@@ -67,7 +67,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     # per reset event, so the chain is nq + 2*total_resets sites (20 or 28 at 3x3
     # for a 12-qubit system). Sampling one branch of the reset channel instead
     # keeps the chain at exactly nq sites, at the cost of a stochastic -- but
-    # unbiased -- energy and gradient. See src/diagnostics/test_trajectory_resets.py
+    # unbiased -- energy and gradient. See tests/test_trajectory_resets.py
     # for the equivalence proof against the purified path.
     use_trajectory_resets: bool = True
     n_trajectories: int = 1            # samples per trial per optimisation step
