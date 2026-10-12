@@ -86,7 +86,7 @@ Each job writes to `logs/<date>_<time>_<jobname>_<jobid>/` (stdout.out, stderr.e
 
 - Circuits are built with `tc.Circuit` (state vector) or `tc.MPSCircuit` (MPS approximation), controlled by `split_conf` dict and `use_mps` flags.
 - Two-qubit gates use the Cartan decomposition block: 2x single-qubit Ry-Rz-Ry + Rxx/Ryy/Rzz.
-- Resets have three implementations, chosen by flags on `ToricCodeAnsatz`: trajectory (`use_trajectory_resets=True`, the dataclass default; ancilla-free, samples one Kraus branch), enumerated (`use_enumerated_resets=True`; sums all 3^R branches exactly), and purified (both False; two ancillas per reset). `VariationalAnsatz.reset_mode` reports which.
+- Resets have three implementations, chosen by flags on `ToricCodeAnsatz`: trajectory (`use_trajectory_resets=True`, `n_trajectories=1` — the default both in the dataclass and in `run_config.py`; ancilla-free, samples one Kraus branch), enumerated (`use_enumerated_resets=True`; sums all 3^R branches exactly), and purified (both False; two ancillas per reset). `VariationalAnsatz.reset_mode` reports which.
 - Purified resets use ancilla qubits with parametrized Ry + Toffoli (CCX) gates; on MPS circuits, Toffoli is decomposed into 1- and 2-qubit gates via `decompose_ccx()`.
 - Energy is computed via `sparse_expectation(qc, fullham)` (sparse mode) or term-by-term `qc.expectation()`.
 - All optimization uses JAX vmap over trials + JIT + Adam (optax).

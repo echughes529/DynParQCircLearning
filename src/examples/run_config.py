@@ -106,7 +106,7 @@ use_optimal_ordering = _env("use_optimal_ordering", True)
 # (chain is nq + 2*total_resets sites, deterministic energy). The two share a
 # parameter layout, so the same seed gives both arms identical initial
 # parameters -- which is what makes an A/B comparison meaningful.
-use_trajectory_resets = _env("use_trajectory_resets", False)
+use_trajectory_resets = _env("use_trajectory_resets", True)
 n_trajectories = _env("n_trajectories", 1)
 # Third option, mutually exclusive with use_trajectory_resets: evaluate ALL
 # 3^total_resets Kraus branches of the reset channel and recombine them. Same

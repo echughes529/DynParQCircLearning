@@ -63,7 +63,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
     cartan_mode: str = "fused"     # "separate" or "fused"
     toffoli_mode: str = "direct"  # "decomposed" or "direct"
 
-    # Trajectory (ancilla-free) resets. The purified default spends two ancillas
+    # Trajectory (ancilla-free) resets -- the default. The purified path spends two ancillas
     # per reset event, so the chain is nq + 2*total_resets sites (20 or 28 at 3x3
     # for a 12-qubit system). Sampling one branch of the reset channel instead
     # keeps the chain at exactly nq sites, at the cost of a stochastic -- but
