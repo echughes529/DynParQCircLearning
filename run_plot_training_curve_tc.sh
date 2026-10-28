@@ -49,6 +49,7 @@ echo "Job name:   ${SLURM_JOB_NAME}"
 echo "Job ID:     ${SLURM_JOB_ID}"
 echo "Host:       $(hostname)"
 echo "Start time: $(date)"
+SECONDS=0  # bash builtin: counts wall seconds since this assignment
 echo "GPU info:   $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || echo 'nvidia-smi not available')"
 if command -v git >/dev/null 2>&1; then
   echo "Git commit: $(git rev-parse HEAD 2>/dev/null || echo 'N/A')"
@@ -89,4 +90,6 @@ EXIT_CODE=$?
 
 # --- Cleanup and final snapshot ---
 stop_memlog "$RUN_DIR" "$EXIT_CODE"
+echo "End time:   $(date)"
+echo "Run time:   $(printf '%02d:%02d:%02d' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60))) (${SECONDS} s)"
 echo "Job finished with exit code: ${EXIT_CODE}"

@@ -165,7 +165,8 @@ def test_single_reset():
     check("enumerated energy == purified energy", abs(e_enum - e_ref) < 1e-9,
           f"{e_enum:.12f} vs {e_ref:.12f}  (diff {abs(e_enum - e_ref):.1e})")
 
-    # Test 5: gradient, including the reset thetas.
+    # Test 5: gradient, including the reset thetas. Under the default
+    # shared_reset_theta=True this is one global theta, not one per reset.
     reset_idx = traj.reset_param_indices
     g_ref = np.asarray(jax.grad(purified.energy_from_params)(params))
     baseline = -0.5   # deliberately not the mean, to exercise the control variate
@@ -243,6 +244,8 @@ def test_composition():
     check("expected gradient == purified gradient (all params)",
           np.max(np.abs(g_dice - g_ref)) < 1e-7,
           f"max abs err = {np.max(np.abs(g_dice - g_ref)):.2e}")
+    # With shared_reset_theta=True (the default) reset_idx is the single shared
+    # theta, whose gradient sums both reset events' contributions.
     reset_idx = traj.reset_param_indices
     check("both reset thetas correct", np.allclose(g_dice[reset_idx], g_ref[reset_idx], atol=1e-8),
           f"est {g_dice[reset_idx]} vs exact {g_ref[reset_idx]}")

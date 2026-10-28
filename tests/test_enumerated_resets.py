@@ -204,6 +204,7 @@ def test_theta_gradient():
 
     g = np.asarray(jax.grad(enum.energy_from_params)(params))
     g_pur = np.asarray(jax.grad(purified.energy_from_params)(params))
+    # A single index under the default shared_reset_theta=True.
     idx = np.asarray(enum.reset_param_indices)
 
     eps = 1e-6

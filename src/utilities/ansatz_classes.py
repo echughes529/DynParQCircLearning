@@ -93,6 +93,12 @@ class ToricCodeAnsatz(VariationalAnsatz):
     # deterministic so it needs far fewer restarts than a noisy one.
     branch_chunk_size: Optional[int] = None
 
+    # One global reset theta shared by every reset event, instead of one theta
+    # per event. The circuit builders still consume the per-event layout; the
+    # optimiser's (shorter) vector is expanded into it by _expand_params, so the
+    # shared theta's gradient is the sum of the per-event gradients.
+    shared_reset_theta: bool = True
+
     def __post_init__(self):
         if self.cartan_mode not in ("separate", "fused"):
             raise ValueError(f"Unknown cartan_mode: {self.cartan_mode!r} (expected 'separate' or 'fused')")
@@ -145,9 +151,14 @@ class ToricCodeAnsatz(VariationalAnsatz):
             # Both ancilla-free modes act in place, so they need no ancillas at
             # all; the purified path needs a coin and a sink each.
             self.nancillas = 0 if self._ancilla_free_resets else 2 * self.total_resets
-            # Unchanged across all three modes: one theta per reset event.
-            self.nparams = (self.nplaquettes * 3 * 9 * self.nlayers +
-                          self.total_resets + 3 * self.lattice.num_qubits)
+            # Unchanged across all three modes: one theta per reset event in
+            # the layout the builders consume. With shared_reset_theta the
+            # optimiser sees nparams = builder_nparams - (total_resets - 1).
+            self.builder_nparams = (self.nplaquettes * 3 * 9 * self.nlayers +
+                                    self.total_resets + 3 * self.lattice.num_qubits)
+            self._build_param_expansion()
+            self.nparams = (self.builder_nparams if self._param_gather is None
+                            else self.builder_nparams - self.total_resets + 1)
 
             if self.use_enumerated_resets:
                 self._build_reset_branch_table()
@@ -163,6 +174,53 @@ class ToricCodeAnsatz(VariationalAnsatz):
         
         print(self.__dict__)
         super().__post_init__()
+
+    def _builder_reset_indices(self):
+        """Indices of the per-event reset thetas in the builders' layout.
+
+        The circuit builders walk a single paramindex layer by layer (a layer's
+        Cartan blocks, then that layer's reset thetas, then the next layer), so
+        the reset thetas are *interleaved* with the Cartan parameters whenever
+        resets are not confined to the final layer.
+        """
+        nclaw_per_layer = self.nplaquettes * 3 * 9
+        indices = []
+        paramindex = 0
+        for layer in range(self.nlayers):
+            paramindex += nclaw_per_layer
+            if layer in self.active_reset_layers:
+                indices.extend(range(paramindex, paramindex + self.nresets_per_layer))
+                paramindex += self.nresets_per_layer
+        return np.asarray(indices, dtype=int)
+
+    def _build_param_expansion(self):
+        """Static gather map from the optimiser's vector to the builders' layout.
+
+        With shared_reset_theta the optimiser's vector is the builders' layout
+        with every reset slot after the first deleted, so the single theta sits
+        where the first reset theta used to. _param_gather[k] is the optimiser
+        index feeding builder slot k; every reset slot points at the shared one.
+        None when no expansion is needed.
+        """
+        self._param_gather = None
+        if not self.shared_reset_theta or self.total_resets == 0:
+            return
+        builder_reset = self._builder_reset_indices()
+        is_reset = np.zeros(self.builder_nparams, dtype=bool)
+        is_reset[builder_reset] = True
+        # Every slot that is not a dropped reset slot keeps its relative order.
+        kept = ~is_reset
+        kept[builder_reset[0]] = True
+        reduced_index = np.cumsum(kept) - 1
+        gather = reduced_index.copy()
+        gather[builder_reset] = reduced_index[builder_reset[0]]
+        self._param_gather = jnp.asarray(gather, dtype=jnp.int32)
+
+    def _expand_params(self, params):
+        """Map the optimiser's parameter vector onto the builders' layout."""
+        if getattr(self, "_param_gather", None) is None:
+            return params
+        return params[self._param_gather]
 
     def _build_reset_branch_table(self):
         """Enumerate every Kraus branch sequence for use_enumerated_resets.
@@ -360,7 +418,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
                     reset_layers_key, self.use_mps, self.normalize_state, self.bond_dim,
                     self.cartan_mode, self.toffoli_mode,
                     self.use_trajectory_resets, self.n_trajectories,
-                    self.use_enumerated_resets, self.branch_chunk_size))
+                    self.use_enumerated_resets, self.branch_chunk_size,
+                    self.shared_reset_theta))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -388,25 +447,19 @@ class ToricCodeAnsatz(VariationalAnsatz):
         Indices of the flat parameter vector holding the probabilistic-reset
         theta parameters, or None if this ansatz has no reset parameters.
 
-        The circuit builders walk a single paramindex layer by layer (a layer's
-        Cartan blocks, then that layer's reset thetas, then the next layer), so
-        the reset thetas are *interleaved* with the Cartan parameters whenever
-        resets are not confined to the final layer. This property mirrors that
-        walk; do not assume the returned indices are contiguous.
+        With shared_reset_theta this is a single index. Otherwise it is one per
+        reset event, and since the reset thetas are interleaved with the Cartan
+        parameters (see _builder_reset_indices), do not assume the returned
+        indices are contiguous.
         """
         if not getattr(self, "use_prob_resets_ansatz", False):
             return None
         if not getattr(self, "total_resets", 0):
             return None
-        nclaw_per_layer = self.nplaquettes * 3 * 9
-        indices = []
-        paramindex = 0
-        for layer in range(self.nlayers):
-            paramindex += nclaw_per_layer
-            if layer in self.active_reset_layers:
-                indices.extend(range(paramindex, paramindex + self.nresets_per_layer))
-                paramindex += self.nresets_per_layer
-        return np.asarray(indices, dtype=int)
+        indices = self._builder_reset_indices()
+        if self._param_gather is not None:
+            return indices[:1]
+        return indices
 
     @property
     def reset_param_slice(self):
@@ -500,9 +553,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
             return qc
         elif self.use_prob_resets_ansatz:
             return construct_dyn_circuit_toriccodelattice_prob_resets(
-                params,
+                self._expand_params(params),
                 nlayers=self.nlayers,
-                nparams=self.nparams,
+                nparams=self.builder_nparams,
                 n_mps_qubits=self.n_mps_qubits,
                 mps_claws=self.mps_claws,
                 mps_reset_qubits=self.mps_reset_qubits,
@@ -539,9 +592,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 "is configured for a different reset path."
             )
         return construct_branch_circuit_toriccodelattice_prob_resets(
-            params,
+            self._expand_params(params),
             nlayers=self.nlayers,
-            nparams=self.nparams,
+            nparams=self.builder_nparams,
             n_mps_qubits=self.n_mps_qubits,
             mps_claws=self.mps_claws,
             mps_reset_qubits=self.mps_reset_qubits,
@@ -565,9 +618,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 "is configured for the purified (ancilla) reset path."
             )
         return construct_traj_circuit_toriccodelattice_prob_resets(
-            params,
+            self._expand_params(params),
             nlayers=self.nlayers,
-            nparams=self.nparams,
+            nparams=self.builder_nparams,
             n_mps_qubits=self.n_mps_qubits,
             mps_claws=self.mps_claws,
             mps_reset_qubits=self.mps_reset_qubits,

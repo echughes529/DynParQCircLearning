@@ -191,7 +191,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
                    reset_layers=None, use_mps=True, bond_dim=None, use_optimal_ordering=True,
                    use_trajectory_resets=True, n_trajectories=1, traj_seed=None, seed=None,
                    use_enumerated_resets=False, branch_chunk_size=None,
-                   max_reset_branches=512,
+                   max_reset_branches=512, shared_reset_theta=True,
                    ):
 
     if nlayers_current is None:
@@ -226,6 +226,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             use_enumerated_resets=use_enumerated_resets,
             branch_chunk_size=branch_chunk_size,
             max_reset_branches=max_reset_branches,
+            shared_reset_theta=shared_reset_theta,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims, sv_per_step, reset_thetas_per_step = ansatz.optimize(
@@ -295,6 +296,7 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             "reset_layers_used": reset_layers_used,
             "reset_layers_input": reset_layers,
             "use_prob_resets_ansatz": use_prob_resets_ansatz,
+            "reset_param_indices": ansatz.reset_param_indices,
             "singular_values_mean_per_cut": singular_values_mean_per_cut,
             "singular_values_std_per_cut": singular_values_std_per_cut,
             "singular_value_ntrials_used": n_sv_trials_used,
@@ -439,7 +441,11 @@ def plotting_thetas(results):
     else:
         active_reset_layers = list(reset_layers_used)
 
-    n_reset_thetas = n_resets_per_layer * len(active_reset_layers)
+    reset_param_indices = results[h].get("reset_param_indices")
+    if reset_param_indices is None:
+        n_reset_thetas = n_resets_per_layer * len(active_reset_layers)
+        reset_param_indices = n_two_q_params_ron + np.arange(n_reset_thetas)
+    n_reset_thetas = len(reset_param_indices) if active_reset_layers else 0
 
     if n_reset_thetas == 0:
         print("No reset-theta parameters for this run (use_prob_resets_ansatz=False or "
@@ -455,13 +461,10 @@ def plotting_thetas(results):
     print(f"reset_layers used: {active_reset_layers}")
     print(f"n_reset_thetas: {n_reset_thetas}")
 
-    theta_start = n_two_q_params_ron
-    theta_stop = theta_start + n_reset_thetas
-
-    theta_history = np.abs(all_param[:, :, theta_start:theta_stop])
+    theta_history = np.abs(all_param[:, :, reset_param_indices])
     # shape: (trials, snapshots, n_reset_thetas)
 
-    print(f"theta parameter indices: {theta_start} to {theta_stop - 1}")
+    print(f"theta parameter indices: {list(reset_param_indices)}")
     print(f"abs(theta_history) shape: {theta_history.shape}")
     print(f"abs(theta_history) min/max: {np.nanmin(theta_history)}, {np.nanmax(theta_history)}")
 
@@ -853,7 +856,7 @@ if __name__ == "__main__":
     print(f"reset_layers={reset_layers}")
     print(f"use_trajectory_resets={use_trajectory_resets}, n_trajectories={n_trajectories}")
     print(f"use_enumerated_resets={use_enumerated_resets}, branch_chunk_size={branch_chunk_size}, "
-          f"max_reset_branches={max_reset_branches}")
+          f"max_reset_branches={max_reset_branches}, shared_reset_theta={shared_reset_theta}")
     print(f"seed={seed}, traj_seed={traj_seed}")
     print(f"unitary={unitary}, sparse={sparse}")
     print("=================================")
@@ -881,6 +884,7 @@ if __name__ == "__main__":
                              use_enumerated_resets=use_enumerated_resets,
                              branch_chunk_size=branch_chunk_size,
                              max_reset_branches=max_reset_branches,
+                             shared_reset_theta=shared_reset_theta,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain

@@ -127,6 +127,9 @@ branch_chunk_size = _env("branch_chunk_size", None)
 # exponential and should not be paid by accident. Raise it explicitly when the
 # cost is the thing being measured.
 max_reset_branches = _env("max_reset_branches", 512)
+# One global reset theta shared by every reset event (True), or one theta per
+# reset event (False). See ToricCodeAnsatz.shared_reset_theta.
+shared_reset_theta = _env("shared_reset_theta", True)
 # Parameter-init seed. None draws a fresh one and prints it. Pin it to compare
 # two arms from bit-identical initial parameters.
 seed = _env("seed", None)
@@ -150,8 +153,9 @@ track_singular_values = _env("track_singular_values", False)
 singular_value_ntrials = _env("singular_value_ntrials", 5)
 
 # Track the per-cut singular-value spectrum and print reset-theta values for a
-# single trial at every save step during training. Only correct for reset_layers
-# equal to the last layer (see ToricCodeAnsatz.reset_param_slice); set trials=1
+# single trial at every save step during training (one value when
+# shared_reset_theta=True). Only correct for reset_layers equal to the last
+# layer (see ToricCodeAnsatz.reset_param_slice); set trials=1
 # when using this for a clean, cheap diagnostic run.
 track_singular_values_per_step = _env("track_singular_values_per_step", False)
 singular_value_trial_idx = _env("singular_value_trial_idx", 0)

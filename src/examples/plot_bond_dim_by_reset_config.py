@@ -379,6 +379,11 @@ def plotting_thetas(results):
     else:
         active_reset_layers = list(reset_layers_used)
 
+    # NOTE: assumes one theta per reset event in a contiguous block after the
+    # Cartan params. Under ToricCodeAnsatz.shared_reset_theta=True (the default)
+    # there is a single theta at n_two_q_params_ron, so only theta_idx=0 below is
+    # a reset theta; the rest are Cartan params. See plot_training_curve_tc.py,
+    # which reads the saved reset_param_indices instead.
     n_reset_thetas = n_resets_per_layer * len(active_reset_layers)
 
     if n_reset_thetas == 0:

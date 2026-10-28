@@ -342,6 +342,17 @@ class VariationalAnsatz(abc.ABC):
         differentiates it. The score term and the pathwise term are the same
         derivative here.
         """
+        nums, dens = self.trajectory_table(params)
+        return K.sum(nums) / K.sum(dens)
+
+    def trajectory_table(self, params) -> Tuple[Any, Any]:
+        """Per-branch ``(<phi_j|H|phi_j>, <phi_j|phi_j>)`` for every reset branch.
+
+        Row j follows ``self._reset_branches[j]``. In the trajectory Kraus
+        notation the two entries are ``p^(i) E^(i)`` and ``p^(i)``, so the
+        branch energy is ``nums / dens`` wherever ``dens > 0``.
+        enumerated_energy_from_params is ``sum(nums) / sum(dens)``.
+        """
         def one_branch(branch):
             qc = self._circuit_branch(params, branch)
             # MPSCircuit.expectation defaults to normalize=False, so
@@ -379,7 +390,8 @@ class VariationalAnsatz(abc.ABC):
                 )
             chunked = branches.reshape(nchunks, chunk, -1)
             nums, dens = jax.lax.map(jax.vmap(one_branch), chunked)
-        return K.sum(nums) / K.sum(dens)
+            nums, dens = nums.reshape(-1), dens.reshape(-1)
+        return nums, dens
 
     def energy_from_params(self, params, seed=None) -> Any:
         """Compute energy for given parameters."""
