@@ -498,7 +498,8 @@ class VariationalAnsatz(abc.ABC):
         return K.exp(-qu.renyi_entropy(rho, 2))
 
     def optimize(self, save_results: bool = False, track_purity: bool = False, track_params: bool = False, track_grads: bool = False, track_bond_dim: bool = False,
-                 track_singular_values_per_step: bool = False, singular_value_trial_idx: int = 0):
+                 track_singular_values_per_step: bool = False, singular_value_trial_idx: int = 0,
+                 step_callback: Optional[Callable[[int, Any], None]] = None):
         """
         Run optimization to find ground state.
 
@@ -510,6 +511,11 @@ class VariationalAnsatz(abc.ABC):
             If True, track purity during optimization
         track_bond_dim : bool
             If True, track the maximum bond dimension for each trial during optimization.
+        step_callback : callable, optional
+            Called as ``step_callback(i, params)`` at the start of every step i,
+            before the step is timed or any randomness is drawn, and once more
+            after the loop with ``i = maxiter`` and the final parameters. It
+            must only read ``params``; training is identical with or without it.
 
         Returns:
         --------
@@ -598,6 +604,8 @@ class VariationalAnsatz(abc.ABC):
 
         with tqdm(range(self.maxiter), miniters=self.howoften_tosave, mininterval=1) as pbar:
             for i in pbar:
+                if step_callback is not None:
+                    step_callback(i, params)
                 step_start = time.perf_counter()
                 if use_traj:
                     traj_key, subkey = jax.random.split(traj_key)
@@ -711,6 +719,9 @@ class VariationalAnsatz(abc.ABC):
                     if n_bad:
                         postfix += f" ({n_bad} non-finite trial{'s' if n_bad > 1 else ''} frozen)"
                     pbar.set_postfix_str(postfix)
+
+        if step_callback is not None:
+            step_callback(self.maxiter, params)
 
         self.n_nonfinite_steps = n_nonfinite_steps
         if n_nonfinite_steps:

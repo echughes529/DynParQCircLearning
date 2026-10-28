@@ -45,6 +45,7 @@ src/
     bond_dim_requirement.py, reset_impl_bench.py   # Bond dim needed / per-step cost per reset mode (traj, pur, enum, none)
     plot_three_resets.py, collect_runs.py          # Figures + run collection for the reset comparison
     svd_call_counting.py       # tap_backends() helper used by the benchmarks
+    trajectory_dump.py         # Full trajectory distribution {a, b, p^(a), p^(b|a), p^(ab), E^(ab)} at 0..100% of enumerated training
     ...                        # Concluded NaN/SVD + normalisation studies live at git tag archive/nan-svd-normalisation
 tests/                         # pytest suite: reset implementations, MPS gate paths, numerics
 submit.sh -> run_plot_training_curve_tc.sh     # Training runs (parameters travel with the job)
