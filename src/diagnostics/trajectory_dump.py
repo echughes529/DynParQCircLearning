@@ -2,7 +2,7 @@
 
 Run:
     python -m src.diagnostics.trajectory_dump --lattice 2x2
-    python -m src.diagnostics.trajectory_dump --lattice 3x3 --out outputs/trajectory_dump
+    python -m src.diagnostics.trajectory_dump --lattice 3x3 --reset-layers 0
 
 One ToricCodeAnsatz trains with enumerated resets (every trajectory evaluated
 exactly at every step). At 0, 20, 40, 60, 80 and 100% of training a read-only
@@ -11,7 +11,7 @@ callback writes, for every trial, one row per trajectory i = ab (notation of the
 
     a, |a|, b, p^(a), p^(b|a), p^(ab), E^(ab)
 
-to <out>/<lattice>/trial<t>_step<s>.npz, with run metadata in a matching .json.
+to <out>/reset_layers_<k>/<lattice>/trial<t>_step<s>.npz, with run metadata in a matching .json.
 "step s" means the parameters at the start of step s; step maxiter is the final
 parameters.
 
@@ -62,7 +62,6 @@ K = tc.set_backend("jax")
 # Lossless caps for the ancilla-free chain: 2^floor(n/2) for the 4- and 7-qubit
 # chains; 64 at 3x3 with optimal ordering.
 BOND_DIM = {"2x2": 4, "3x2": 8, "3x3": 64}
-RESET_LAYERS = [0]
 FRACTIONS = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 # Below this a trajectory has no state to speak of (note section 3.3.3).
 Q_FLOOR = 1e-12
@@ -77,13 +76,13 @@ def git_state():
     return run("git", "rev-parse", "HEAD"), bool(run("git", "status", "--porcelain", "--untracked-files=no"))
 
 
-def build_ansatz(lattice, enumerated, trials, maxiter, seed):
+def build_ansatz(lattice, enumerated, trials, maxiter, seed, reset_layers):
     Lx, Ly = (int(v) for v in lattice.split("x"))
     return ToricCodeAnsatz(
         Lx=Lx, Ly=Ly, nlayers=cfg.nlayers, howoften_toreset=cfg.howoften_toreset, h=0,
         trials=trials, maxiter=maxiter, howoften_tosave=cfg.howoften_tosave,
         unitary=cfg.unitary, sparse=cfg.sparse, perform_noisy_simulations=False,
-        use_prob_resets_ansatz=True, reset_layers=RESET_LAYERS, use_mps=True,
+        use_prob_resets_ansatz=True, reset_layers=reset_layers, use_mps=True,
         bond_dim=BOND_DIM[lattice], use_optimal_ordering=cfg.use_optimal_ordering,
         use_trajectory_resets=not enumerated, n_trajectories=1,
         use_enumerated_resets=enumerated, max_reset_branches=cfg.max_reset_branches,
@@ -205,7 +204,8 @@ class Dumper:
 def sampling_check(lattice, dumper, n_samples, seed, trials, maxiter):
     """Check 5: single-trajectory samples against the saved distribution."""
     (step, t), s = max(dumper.saved.items(), key=lambda kv: kv[1]["var"])
-    single = build_ansatz(lattice, enumerated=False, trials=1, maxiter=maxiter, seed=seed)
+    single = build_ansatz(lattice, enumerated=False, trials=1, maxiter=maxiter, seed=seed,
+                          reset_layers=dumper.meta["reset_layers"])
     assert single.nparams == dumper.ansatz.nparams, "parameter layouts differ"
     params = jnp.tile(jnp.asarray(s["theta"]), (n_samples, 1))
     status = jax.random.uniform(jax.random.PRNGKey(seed + 1), (n_samples, 1, dumper.R))
@@ -240,11 +240,14 @@ def main():
     ap.add_argument("--maxiter", type=int, default=cfg.maxiter)
     ap.add_argument("--trials", type=int, default=cfg.trials)
     ap.add_argument("--seed", type=int, default=4321)
+    ap.add_argument("--reset-layers", type=int, nargs="+", default=list(cfg.reset_layers),
+                    help="layers carrying the probabilistic resets (zero-based)")
     ap.add_argument("--samples", type=int, default=500)
     ap.add_argument("--out", default=os.path.join("outputs", "trajectory_dump"))
     args = ap.parse_args()
 
-    out = os.path.join(args.out, args.lattice)
+    rl_tag = "reset_layers_" + "_".join(map(str, args.reset_layers))
+    out = os.path.join(args.out, rl_tag, args.lattice)
     os.makedirs(out, exist_ok=True)
     commit, dirty = git_state()
     if dirty:
@@ -253,7 +256,7 @@ def main():
 
     t_start = time.perf_counter()
     ansatz = build_ansatz(args.lattice, enumerated=True, trials=args.trials,
-                          maxiter=args.maxiter, seed=args.seed)
+                          maxiter=args.maxiter, seed=args.seed, reset_layers=args.reset_layers)
     dump_steps = sorted({int(round(f * args.maxiter)) for f in FRACTIONS})
     coeffs = np.array([c for _, c in ansatz._hamiltonian_terms()])
     meta = dict(
@@ -261,7 +264,7 @@ def main():
         E_LB=float(-np.abs(coeffs).sum()), E_UB=float(np.abs(coeffs).sum()),
         seed=int(ansatz.seed), git_commit=commit, git_dirty=dirty,
         bond_dim=BOND_DIM[args.lattice], use_optimal_ordering=bool(cfg.use_optimal_ordering),
-        nlayers=int(cfg.nlayers), reset_layers=RESET_LAYERS, reset_mode=ansatz.reset_mode,
+        nlayers=int(cfg.nlayers), reset_layers=args.reset_layers, reset_mode=ansatz.reset_mode,
         learning_rate=float(ansatz.learning_rate), shared_reset_theta=True,
     )
     print(f"{args.lattice}: R={ansatz.total_resets}, {3 ** ansatz.total_resets} trajectories, "
