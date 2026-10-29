@@ -266,6 +266,7 @@ def main():
         bond_dim=BOND_DIM[args.lattice], use_optimal_ordering=bool(cfg.use_optimal_ordering),
         nlayers=int(cfg.nlayers), reset_layers=args.reset_layers, reset_mode=ansatz.reset_mode,
         learning_rate=float(ansatz.learning_rate), shared_reset_theta=True,
+        svd_fwd_alg=os.environ.get("DPQC_SVD_FWD_ALG") or "default",
     )
     print(f"{args.lattice}: R={ansatz.total_resets}, {3 ** ansatz.total_resets} trajectories, "
           f"nparams={ansatz.nparams}, sigma index={list(np.asarray(ansatz.reset_param_indices))}, "

@@ -98,4 +98,5 @@ Each job writes to `logs/<date>_<time>_<jobname>_<jobid>/` (stdout.out, stderr.e
 - `split_conf = {}` in `generate_ansatz.py` controls tensor splitting; set it to `{"max_singular_values": N}` for MPS truncation.
 - Results go to `results/` (master HDF5) and `tmp/` (per-run HDF5; each is duplicated in the master, so `tmp/` is safe to clear). Plots go to `outputs/` or `$DPQC_OUTDIR`.
 - `jax_cache/` and `ctg_cache/` live at the repo root (paths are anchored in code); both are safe to delete.
+- The run_*.sh job scripts default `DPQC_SVD_FWD_ALG=qr` (QR forward SVD; the batched-Jacobi default NaNs on rank-deficient MPS splits). Direct `python -m ...` runs don't get it unless you export it.
 - Thread counts are pinned (4, via OMP/OPENBLAS/MKL_NUM_THREADS) in job scripts to avoid contention on shared nodes.

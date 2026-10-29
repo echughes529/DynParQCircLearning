@@ -31,6 +31,10 @@ export TF_NUM_INTEROP_THREADS=4
 export TF_CPP_MIN_LOG_LEVEL=2
 export JAX_ENABLE_X64=1
 export PYTHONUNBUFFERED=1
+# Forward SVD on the QR kernel (generate_ansatz.py): cuSOLVER's batched Jacobi
+# NaNs vmapped trials on rank-deficient MPS splits, e.g. once sigma -> 0. Set
+# DPQC_SVD_FWD_ALG= (empty) in the submitting environment to opt out.
+export DPQC_SVD_FWD_ALG="${DPQC_SVD_FWD_ALG-qr}"
 
 # Report honest GPU memory. JAX preallocates 75% of the card by default, so
 # nvidia-smi shows a flat ~34.5 GiB on an A40 no matter what a job uses -- which
