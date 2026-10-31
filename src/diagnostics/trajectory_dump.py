@@ -283,6 +283,8 @@ def main():
                     help="layers carrying the probabilistic resets (zero-based)")
     ap.add_argument("--samples", type=int, default=500)
     ap.add_argument("--out", default=os.path.join("outputs", "trajectory_dump"))
+    ap.add_argument("--dump-steps", type=int, nargs="+", default=None,
+                    help="explicit steps to dump (default: 0, 20, ..., 100%% of --maxiter)")
     args = ap.parse_args()
 
     rl_tag = "reset_layers_" + "_".join(map(str, args.reset_layers))
@@ -296,7 +298,8 @@ def main():
     t_start = time.perf_counter()
     ansatz = build_ansatz(args.lattice, enumerated=True, trials=args.trials,
                           maxiter=args.maxiter, seed=args.seed, reset_layers=args.reset_layers)
-    dump_steps = sorted({int(round(f * args.maxiter)) for f in FRACTIONS})
+    dump_steps = sorted(set(args.dump_steps) if args.dump_steps else
+                        {int(round(f * args.maxiter)) for f in FRACTIONS})
     coeffs = np.array([c for _, c in ansatz._hamiltonian_terms()])
     meta = dict(
         lattice=args.lattice, maxiter=args.maxiter, trials=args.trials,
