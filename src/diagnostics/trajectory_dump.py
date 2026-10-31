@@ -65,6 +65,11 @@ BOND_DIM = {"2x2": 4, "3x2": 8, "3x3": 64}
 FRACTIONS = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 # Below this a trajectory has no state to speak of (note section 3.3.3).
 Q_FLOOR = 1e-12
+# The dump's forward evaluations run on CPU. On the GPU, the one big batch of
+# trials x 3^R trajectories NaN'd single trials once sigma ~ 1e-17 (job 3692122,
+# 3x3 step 600, with the QR forward SVD), while the same parameters are finite
+# on CPU under both SVD kernels. Training stays on the default device.
+CPU = jax.devices("cpu")[0]
 TOL_P = 1e-10
 TOL_E = 1e-8
 N_SIGMA = 4.0
@@ -114,6 +119,8 @@ class Dumper:
         _, self.pattern_id = np.unique(self.a, axis=0, return_inverse=True)
         self.pattern_id = self.pattern_id.reshape(-1)
         self.table = jax.jit(jax.vmap(ansatz.trajectory_table))
+        # The code's exact energy: the function training differentiates.
+        self.energy = jax.jit(jax.vmap(ansatz.enumerated_energy_from_params))
         self.saved = {}          # (step, trial) -> dict, for the sampling check
         self.dump_seconds = 0.0
 
@@ -122,12 +129,13 @@ class Dumper:
             return
         t0 = time.perf_counter()
         params = np.asarray(params)
-        nums1, dens1 = (np.asarray(x) for x in self.table(jnp.asarray(params)))
         half = params.copy()
         half[:, self.sig_idx] = np.pi / 2
-        nums2, dens2 = (np.asarray(x) for x in self.table(jnp.asarray(half)))
-        # The code's exact energy: the very function training differentiates.
-        E_exact = np.asarray(self.ansatz._costs_vmapped(jnp.asarray(params)))
+        with jax.default_device(CPU):
+            p_cpu, half_cpu = jax.device_put(params, CPU), jax.device_put(half, CPU)
+            nums1, dens1 = (np.asarray(x) for x in self.table(p_cpu))
+            nums2, dens2 = (np.asarray(x) for x in self.table(half_cpu))
+            E_exact = np.asarray(self.energy(p_cpu))
 
         failures = []
         for t in range(params.shape[0]):
@@ -204,12 +212,13 @@ class Dumper:
 def sampling_check(lattice, dumper, n_samples, seed, trials, maxiter):
     """Check 5: single-trajectory samples against the saved distribution."""
     (step, t), s = max(dumper.saved.items(), key=lambda kv: kv[1]["var"])
-    single = build_ansatz(lattice, enumerated=False, trials=1, maxiter=maxiter, seed=seed,
-                          reset_layers=dumper.meta["reset_layers"])
-    assert single.nparams == dumper.ansatz.nparams, "parameter layouts differ"
-    params = jnp.tile(jnp.asarray(s["theta"]), (n_samples, 1))
-    status = jax.random.uniform(jax.random.PRNGKey(seed + 1), (n_samples, 1, dumper.R))
-    vals = np.asarray(single._costs_vmapped(params, status, jnp.zeros(n_samples)))
+    with jax.default_device(CPU):
+        single = build_ansatz(lattice, enumerated=False, trials=1, maxiter=maxiter, seed=seed,
+                              reset_layers=dumper.meta["reset_layers"])
+        assert single.nparams == dumper.ansatz.nparams, "parameter layouts differ"
+        params = jax.device_put(np.tile(s["theta"], (n_samples, 1)), CPU)
+        status = jax.random.uniform(jax.random.PRNGKey(seed + 1), (n_samples, 1, dumper.R))
+        vals = np.asarray(single._costs_vmapped(params, status, jnp.zeros(n_samples)))
 
     mean, svar = vals.mean(), vals.var(ddof=1)
     se_mean = np.sqrt(s["var"] / n_samples)
@@ -267,6 +276,7 @@ def main():
         nlayers=int(cfg.nlayers), reset_layers=args.reset_layers, reset_mode=ansatz.reset_mode,
         learning_rate=float(ansatz.learning_rate), shared_reset_theta=True,
         svd_fwd_alg=os.environ.get("DPQC_SVD_FWD_ALG") or "default",
+        dump_device="cpu", training_device=str(jax.devices()[0]),
     )
     print(f"{args.lattice}: R={ansatz.total_resets}, {3 ** ansatz.total_resets} trajectories, "
           f"nparams={ansatz.nparams}, sigma index={list(np.asarray(ansatz.reset_param_indices))}, "
