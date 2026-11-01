@@ -150,7 +150,8 @@ class Dumper:
         # Real-sigma reference over the kept trajectories only. A skipped slot is
         # filled with that trial's first kept trajectory and masked out after.
         sig = params[:, self.sig_idx]
-        keep = np.stack([p_pattern(s, self.abs_a, self.R) >= P_KEEP for s in sig])
+        p_keep = self.meta["reference_p_keep"]
+        keep = np.stack([p_pattern(s, self.abs_a, self.R) >= p_keep for s in sig])
         filler = self.branches[np.argmax(keep, axis=1)]
         branch_lists = np.where(keep[:, :, None], self.branches[None], filler[:, None, :])
         nums1, dens1 = (np.asarray(x) for x in
@@ -230,7 +231,6 @@ class Dumper:
             p_reset_per_location=[float(np.sin(sigma / 2) ** 2)] * R,
             theta=theta.tolist(), E_exact=E_exact, E_variance=float(var),
             reference_kept_trajectories=int(keep.sum()), reference_skipped_weight=dropped,
-            reference_p_keep=P_KEEP,
             n_trajectories=int(len(p_ab)), n_undefined_E=int((~alive).sum()),
             nonfinite_steps_so_far=int(getattr(self.ansatz, "n_nonfinite_steps", 0)),
             checks=checks,
@@ -286,6 +286,8 @@ def main():
     ap.add_argument("--init-p-reset", type=float, default=None,
                     help="start every trial at this p_reset (sigma = 2 asin(sqrt(p))); "
                          "default keeps the ansatz's random reset-angle init")
+    ap.add_argument("--p-keep", type=float, default=P_KEEP,
+                    help="skip trajectories with p^(a) below this in the real-sigma reference")
     ap.add_argument("--dump-steps", type=int, nargs="+", default=None,
                     help="explicit steps to dump (default: 0, 20, ..., 100%% of --maxiter)")
     args = ap.parse_args()
@@ -317,7 +319,7 @@ def main():
         bond_dim=BOND_DIM[args.lattice], use_optimal_ordering=bool(cfg.use_optimal_ordering),
         nlayers=int(cfg.nlayers), reset_layers=args.reset_layers, reset_mode=ansatz.reset_mode,
         learning_rate=float(ansatz.learning_rate), shared_reset_theta=True,
-        init_p_reset=args.init_p_reset,
+        init_p_reset=args.init_p_reset, reference_p_keep=args.p_keep,
         svd_fwd_alg=os.environ.get("DPQC_SVD_FWD_ALG") or "default",
     )
     print(f"{args.lattice}: R={ansatz.total_resets}, {3 ** ansatz.total_resets} trajectories, "
