@@ -283,6 +283,9 @@ def main():
                     help="layers carrying the probabilistic resets (zero-based)")
     ap.add_argument("--samples", type=int, default=500)
     ap.add_argument("--out", default=os.path.join("outputs", "trajectory_dump"))
+    ap.add_argument("--init-p-reset", type=float, default=None,
+                    help="start every trial at this p_reset (sigma = 2 asin(sqrt(p))); "
+                         "default keeps the ansatz's random reset-angle init")
     ap.add_argument("--dump-steps", type=int, nargs="+", default=None,
                     help="explicit steps to dump (default: 0, 20, ..., 100%% of --maxiter)")
     args = ap.parse_args()
@@ -298,6 +301,12 @@ def main():
     t_start = time.perf_counter()
     ansatz = build_ansatz(args.lattice, enumerated=True, trials=args.trials,
                           maxiter=args.maxiter, seed=args.seed, reset_layers=args.reset_layers)
+    if args.init_p_reset is not None:
+        # Only the shared reset angle changes; every other parameter keeps the
+        # seed's draw, so runs are comparable with the default-init ones.
+        sigma0 = 2.0 * np.arcsin(np.sqrt(args.init_p_reset))
+        sig_idx = int(np.asarray(ansatz.reset_param_indices)[0])
+        ansatz.initparams = jnp.asarray(ansatz.initparams).at[:, sig_idx].set(sigma0)
     dump_steps = sorted(set(args.dump_steps) if args.dump_steps else
                         {int(round(f * args.maxiter)) for f in FRACTIONS})
     coeffs = np.array([c for _, c in ansatz._hamiltonian_terms()])
@@ -308,6 +317,7 @@ def main():
         bond_dim=BOND_DIM[args.lattice], use_optimal_ordering=bool(cfg.use_optimal_ordering),
         nlayers=int(cfg.nlayers), reset_layers=args.reset_layers, reset_mode=ansatz.reset_mode,
         learning_rate=float(ansatz.learning_rate), shared_reset_theta=True,
+        init_p_reset=args.init_p_reset,
         svd_fwd_alg=os.environ.get("DPQC_SVD_FWD_ALG") or "default",
     )
     print(f"{args.lattice}: R={ansatz.total_resets}, {3 ** ansatz.total_resets} trajectories, "
