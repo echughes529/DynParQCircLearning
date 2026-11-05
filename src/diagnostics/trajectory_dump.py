@@ -58,6 +58,7 @@ import tensorcircuit as tc
 
 from src.examples import run_config as cfg
 from src.utilities.ansatz_classes import ToricCodeAnsatz
+from src.utilities.generate_toric_code_hamiltonian import ToricCode
 from src.diagnostics.single_traj_error import trajectory_labels
 
 K = tc.set_backend("jax")
@@ -87,9 +88,18 @@ def git_state():
     return run("git", "rev-parse", "HEAD"), bool(run("git", "status", "--porcelain", "--untracked-files=no"))
 
 
-def build_ansatz(lattice, enumerated, trials, maxiter, seed, reset_layers):
+def default_reset_qubits(lattice):
+    """The ansatz's default reset qubits (one per plaquette), in circuit order."""
+    Lx, Ly = (int(v) for v in lattice.split("x"))
+    tcl = ToricCode(Lx, Ly)
+    qs = [tcl.qubit_index(x, y, 1) for x in range(Lx - 1) for y in range(Ly - 1)]
+    return [q for q in qs if q is not None]
+
+
+def build_ansatz(lattice, enumerated, trials, maxiter, seed, reset_layers, reset_qubits=None):
     Lx, Ly = (int(v) for v in lattice.split("x"))
     return ToricCodeAnsatz(
+        which_qubits_for_prob_reset=reset_qubits,
         Lx=Lx, Ly=Ly, nlayers=cfg.nlayers, howoften_toreset=cfg.howoften_toreset, h=0,
         trials=trials, maxiter=maxiter, howoften_tosave=cfg.howoften_tosave,
         unitary=cfg.unitary, sparse=cfg.sparse, perform_noisy_simulations=False,
@@ -260,7 +270,8 @@ def sampling_check(lattice, dumper, n_samples, seed, trials, maxiter):
     clean = {k: v for k, v in dumper.saved.items() if v["ok"] and np.isfinite(v["var"])}
     (step, t), s = max(clean.items(), key=lambda kv: kv[1]["var"])
     single = build_ansatz(lattice, enumerated=False, trials=1, maxiter=maxiter, seed=seed,
-                          reset_layers=dumper.meta["reset_layers"])
+                          reset_layers=dumper.meta["reset_layers"],
+                          reset_qubits=dumper.meta["reset_qubits"])
     assert single.nparams == dumper.ansatz.nparams, "parameter layouts differ"
     params = jnp.tile(jnp.asarray(s["theta"]), (n_samples, 1))
     status = jax.random.uniform(jax.random.PRNGKey(seed + 1), (n_samples, 1, dumper.R))
@@ -306,9 +317,19 @@ def main():
                     help="skip trajectories with p^(a) below this in the real-sigma reference")
     ap.add_argument("--dump-steps", type=int, nargs="+", default=None,
                     help="explicit steps to dump (default: 0, 20, ..., 100%% of --maxiter)")
+    ap.add_argument("--n-resets", type=int, default=None,
+                    help="reset only the first k of the default reset qubits in each reset "
+                         "layer (default: all of them, one per plaquette)")
     args = ap.parse_args()
 
+    reset_qubits = None
     rl_tag = "reset_layers_" + "_".join(map(str, args.reset_layers))
+    if args.n_resets is not None:
+        all_q = default_reset_qubits(args.lattice)
+        if not 1 <= args.n_resets <= len(all_q):
+            raise SystemExit(f"--n-resets must be 1..{len(all_q)} for {args.lattice}")
+        reset_qubits = all_q[:args.n_resets]
+        rl_tag += f"_nres{args.n_resets}"
     out = os.path.join(args.out, rl_tag, args.lattice)
     os.makedirs(out, exist_ok=True)
     commit, dirty = git_state()
@@ -318,7 +339,8 @@ def main():
 
     t_start = time.perf_counter()
     ansatz = build_ansatz(args.lattice, enumerated=True, trials=args.trials,
-                          maxiter=args.maxiter, seed=args.seed, reset_layers=args.reset_layers)
+                          maxiter=args.maxiter, seed=args.seed, reset_layers=args.reset_layers,
+                          reset_qubits=reset_qubits)
     if args.init_p_reset is not None:
         # Only the shared reset angle changes; every other parameter keeps the
         # seed's draw, so runs are comparable with the default-init ones.
@@ -334,6 +356,7 @@ def main():
         seed=int(ansatz.seed), git_commit=commit, git_dirty=dirty,
         bond_dim=BOND_DIM[args.lattice], use_optimal_ordering=bool(cfg.use_optimal_ordering),
         nlayers=int(cfg.nlayers), reset_layers=args.reset_layers, reset_mode=ansatz.reset_mode,
+        reset_qubits=reset_qubits if reset_qubits is not None else default_reset_qubits(args.lattice),
         learning_rate=float(ansatz.learning_rate), shared_reset_theta=True,
         init_p_reset=args.init_p_reset, reference_p_keep=args.p_keep,
         svd_fwd_alg=os.environ.get("DPQC_SVD_FWD_ALG") or "default",
