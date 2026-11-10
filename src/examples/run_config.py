@@ -142,6 +142,11 @@ traj_seed = _env("traj_seed", None)
 # Use None to apply resets on every layer, preserving the old behaviour.
 # Layer indexing is zero-based, so [0] means only the first layer.
 reset_layers = _env("reset_layers", [1])
+# Which qubits get reset. None keeps the default (one rung per plaquette, so the
+# count grows with Lx). An integer k picks k rungs spread evenly along an Lx x 2
+# ladder (generate_toric_code_hamiltonian.spread_rung_reset_qubits), so the
+# number of resets stays fixed while the lattice grows. Ly must be 2.
+n_spread_resets = _env("n_spread_resets", None)
 
 track_grads = _env("track_grads", False)
 track_params = _env("track_params", False)

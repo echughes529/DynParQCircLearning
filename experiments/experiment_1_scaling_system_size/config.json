@@ -1,0 +1,55 @@
+{
+  "description": "Experiment 1: scaling with system size. See PLAN.md.",
+  "fixed": {
+    "nlayers": 2,
+    "reset_layers": [
+      1
+    ],
+    "n_spread_resets": 4,
+    "trials": 5,
+    "seed": 1234,
+    "maxiter": 2000,
+    "howoften_tosave": 10,
+    "h": 0,
+    "learning_rate": 0.01,
+    "use_optimal_ordering": true,
+    "svd_fwd_alg": "qr",
+    "gpu": "A40",
+    "walltime": "48:00:00",
+    "convergence_rel_tol": 0.001
+  },
+  "methods": {
+    "mc_n1": "trajectory, n_trajectories=1",
+    "mc_n8": "trajectory, n_trajectories=8",
+    "purified": "two ancillas per reset",
+    "enumerated": "all 3^4 = 81 trajectories"
+  },
+  "reset_qubits": {
+    "2x2": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "3x2": [
+      0,
+      4,
+      5,
+      6
+    ],
+    "4x2": [
+      6,
+      7,
+      8,
+      9
+    ],
+    "5x2": [
+      8,
+      9,
+      11,
+      12
+    ]
+  },
+  "bond_dim_needed": {},
+  "bond_dim": {}
+}

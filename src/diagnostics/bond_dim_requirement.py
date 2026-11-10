@@ -66,8 +66,11 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+import os
+
 from src.utilities.ansatz_classes import ToricCodeAnsatz
 from src.utilities.generate_ansatz import make_split_conf
+from src.utilities.generate_toric_code_hamiltonian import spread_rung_reset_qubits
 
 # Pass gate on discarded weight, two orders below the 1e-3 convergence criterion.
 GATE = 1e-5
@@ -124,10 +127,38 @@ LADDERS = {
 }
 
 
+# Used when a lattice has no hand-tuned ladder above, and always with
+# --n-spread-resets (the hand-tuned ladders assume the default reset count,
+# e.g. the 2x2 purified one stops at 8 where a 4-reset chain has 12 sites).
+# Rungs above the exact cap are dropped per arm in run_lattice.
+AUTO_LADDER = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512]
+
+# --n-spread-resets: reset k rungs spread along an Lx x 2 ladder instead of
+# the default one-per-plaquette set (Experiment 1). None keeps the default.
+N_SPREAD_RESETS = None
+
+
+def reset_qubits_for(Lx, Ly):
+    if N_SPREAD_RESETS is None:
+        return None
+    return spread_rung_reset_qubits(Lx, Ly, N_SPREAD_RESETS)
+
+
+def ladder_for(key, mode, cap):
+    if N_SPREAD_RESETS is None and (key, mode) in LADDERS:
+        return list(LADDERS[(key, mode)])
+    ladder = [bd for bd in AUTO_LADDER if bd <= cap]
+    if cap > AUTO_LADDER[-1]:
+        print(f"  note: exact cap {cap} is above the auto ladder; it stops at {AUTO_LADDER[-1]}")
+    return ladder
+
+
 def lattice_facts(Lx, Ly):
     """Chain lengths, exact bond-dimension caps and E0, from the lattice alone."""
     nq = 2 * Lx * Ly - Lx - Ly
-    R = (Lx - 1) * (Ly - 1)                  # total_resets for reset_layers=[1]
+    # total_resets for reset_layers=[1]: one per plaquette by default, or the
+    # fixed --n-spread-resets count.
+    R = (Lx - 1) * (Ly - 1) if N_SPREAD_RESETS is None else N_SPREAD_RESETS
     stars, plaquettes = Lx * Ly, (Lx - 1) * (Ly - 1)
     return {
         "nq": nq,
@@ -159,6 +190,7 @@ def build(Lx, Ly, mode, bond_dim, use_optimal_ordering=True):
         # An empty list, not None: None means "resets on every layer", [] means
         # no reset events at all, which is the `none` control.
         reset_layers=([] if mode == "none" else RESET_LAYERS),
+        which_qubits_for_prob_reset=reset_qubits_for(Lx, Ly),
         trials=1, seed=SEED, bond_dim=bond_dim,
         use_optimal_ordering=use_optimal_ordering,
         use_trajectory_resets=(mode in ("traj", "none")),
@@ -353,15 +385,21 @@ def run_lattice(Lx, Ly, rows, use_optimal_ordering=True, extra_params=None,
 
     converged = converged_params_3x3() if key == "3x3" else None
 
+    if N_SPREAD_RESETS is not None:
+        print(f"  reset qubits (n_spread_resets={N_SPREAD_RESETS}): {reset_qubits_for(Lx, Ly)}")
+
     for mode in modes:
-        if (key, mode) not in LADDERS:
-            print(f"\n  --- {key} {mode}: no ladder defined, skipping ---")
-            continue
-        ladder = [bd for bd in LADDERS[(key, mode)]]
         cap = facts[f"{mode}_cap"]
+        ladder = ladder_for(key, mode, cap)
         t0 = time.perf_counter()
         ansatz = build(Lx, Ly, mode, ladder[-1], use_optimal_ordering)
         build_s = time.perf_counter() - t0
+        if mode != "none" and ansatz.total_resets != facts["R"]:
+            raise RuntimeError(f"{key} {mode}: ansatz has {ansatz.total_resets} resets, "
+                               f"lattice_facts expected {facts['R']}")
+        if ansatz.n_mps_qubits != facts[f"{mode}_chain"]:
+            raise RuntimeError(f"{key} {mode}: chain is {ansatz.n_mps_qubits} sites, "
+                               f"lattice_facts expected {facts[f'{mode}_chain']}")
 
         param_sets = {"init": jnp.asarray(ansatz.initparams[0])}
         if converged is not None:
@@ -431,8 +469,15 @@ def main():
                              "share the natural system-qubit order")
     parser.add_argument("--from-checkpoint", default=None,
                         help="also measure at parameters sampled along a real training run "
-                             "(a checkpoint.npz written by optimize())")
+                             "(a checkpoint.npz written by optimize()); comma-separated for "
+                             "several, e.g. one per Experiment 1 pilot")
+    parser.add_argument("--n-spread-resets", type=int, default=None,
+                        help="reset this many rungs spread along an Lx x 2 ladder "
+                             "(spread_rung_reset_qubits) instead of the default reset qubits")
     args = parser.parse_args()
+
+    global N_SPREAD_RESETS
+    N_SPREAD_RESETS = args.n_spread_resets
 
     modes = tuple(m.strip() for m in args.modes.split(",") if m.strip())
     unknown = [m for m in modes if m not in MODES]
@@ -443,7 +488,16 @@ def main():
     print(f"gate: discarded weight <= {GATE:g}; trajectory samples per rung: {N_TRAJ_SAMPLES}")
     print(f"modes: {', '.join(modes)}")
 
-    extra = checkpoint_param_sets(args.from_checkpoint) if args.from_checkpoint else None
+    extra = None
+    if args.from_checkpoint:
+        paths = [p.strip() for p in args.from_checkpoint.split(",") if p.strip()]
+        extra = {}
+        for path in paths:
+            # Prefix each stage with its run folder so several checkpoints'
+            # "step100"s don't overwrite each other.
+            tag = os.path.basename(os.path.dirname(os.path.abspath(path)))
+            for name, p in checkpoint_param_sets(path).items():
+                extra[f"{tag}:{name}" if len(paths) > 1 else name] = p
 
     rows = []
     for spec in args.lattices.split(","):

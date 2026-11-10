@@ -14,7 +14,12 @@ cd /home/s1931382/DynParQCircLearning || exit 1
 
 # --- Create a per-run log + output directory ---
 RUN_TAG=$(date +%Y-%m-%d_%H-%M-%S)
-RUN_DIR=logs/${RUN_TAG}_${SLURM_JOB_NAME}_${SLURM_JOB_ID}
+# DPQC_RUN_DIR (./submit.sh RUN_DIR=...) sends everything for this job to a
+# fixed folder instead of a fresh logs/ one -- used by the experiments/ sweeps,
+# where each (lattice, method) has a permanent home. The python side reads the
+# same variable to copy its HDF5 and write run_config.json there. It is NOT
+# exported for ordinary runs, so those behave exactly as before.
+RUN_DIR=${DPQC_RUN_DIR:-logs/${RUN_TAG}_${SLURM_JOB_NAME}_${SLURM_JOB_ID}}
 mkdir -p "$RUN_DIR"
 
 # Redirect stdout/stderr into the per-run directory

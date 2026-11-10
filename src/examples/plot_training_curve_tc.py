@@ -1,15 +1,74 @@
 import csv
+import json
 import numpy as np
 import os
+import shutil
 
 # use a non-interactive backend for headless environments
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.utilities.generate_toric_code_hamiltonian import ToricCode
+from src.utilities.generate_toric_code_hamiltonian import (
+    ToricCode, spread_rung_reset_qubits, toric_ground_energy_h0,
+)
 from src.utilities.ansatz_classes import ToricCodeAnsatz
 from src.utilities.generate_ansatz import get_singular_values_per_cut
+
+
+def _write_run_config_json(ansatz, run_dir, h, filename="run_config.json"):
+    """Everything needed to rebuild this ansatz later, as plain JSON.
+
+    The post-hoc analysis (src/experiments/exp1_analyse_run.py) rebuilds an
+    enumerated twin from this, so it records the *resolved* values -- the seed
+    actually drawn, the trajectory seed actually used, the reset qubits actually
+    used -- not the config inputs. Reset fields are null on ansatze without
+    resets (unitary runs, reset_layers=[]), which never set them.
+    """
+    try:
+        from src.utilities.precision import PRECISION
+    except ImportError:   # trees without the DPQC_PRECISION switch run in double
+        PRECISION = "double"
+
+    def opt_int(x):
+        return None if x is None else int(x)
+
+    reset_qubits = getattr(ansatz, "which_qubits_for_prob_reset", None)
+    reset_layers = getattr(ansatz, "active_reset_layers", None)
+    reset_idx = ansatz.reset_param_indices
+    seed = opt_int(ansatz.seed)
+    is_traj = bool(getattr(ansatz, "use_trajectory_resets", False))
+    traj_seed = opt_int(getattr(ansatz, "traj_seed", None))
+    record = {
+        "Lx": ansatz.Lx, "Ly": ansatz.Ly, "h": float(h),
+        "n_qubits": int(ansatz.lattice.num_qubits),
+        "nlayers": ansatz.nlayers, "trials": ansatz.trials,
+        "maxiter": ansatz.maxiter, "howoften_tosave": ansatz.howoften_tosave,
+        "bond_dim": ansatz.bond_dim, "use_optimal_ordering": ansatz.use_optimal_ordering,
+        "reset_layers": None if reset_layers is None else [int(l) for l in reset_layers],
+        "reset_qubits": None if reset_qubits is None else [int(q) for q in reset_qubits],
+        "total_resets": int(getattr(ansatz, "total_resets", 0)),
+        "reset_mode": ansatz.reset_mode,
+        "use_trajectory_resets": is_traj,
+        "use_enumerated_resets": bool(getattr(ansatz, "use_enumerated_resets", False)),
+        "n_trajectories": int(getattr(ansatz, "n_trajectories", 1)),
+        "shared_reset_theta": bool(getattr(ansatz, "shared_reset_theta", False)),
+        "seed": seed,
+        # optimize() falls back to `seed` when traj_seed is None; record that.
+        "traj_seed": (traj_seed if traj_seed is not None else seed) if is_traj else None,
+        "learning_rate": float(ansatz.learning_rate),
+        "n_mps_qubits": opt_int(getattr(ansatz, "n_mps_qubits", None)),
+        "reset_param_indices": (None if reset_idx is None
+                                else [int(i) for i in np.atleast_1d(reset_idx)]),
+        "track_params": bool(track_params), "track_grads": bool(track_grads),
+        "svd_fwd_alg": os.environ.get("DPQC_SVD_FWD_ALG", ""),
+        "precision": PRECISION,
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID", "local"),
+    }
+    path = os.path.join(run_dir, filename)
+    with open(path, "w") as fh:
+        json.dump(record, fh, indent=2)
+    print(f"Wrote run config to: {path}")
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -192,10 +251,16 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
                    use_trajectory_resets=True, n_trajectories=1, traj_seed=None, seed=None,
                    use_enumerated_resets=False, branch_chunk_size=None,
                    max_reset_branches=512, shared_reset_theta=True,
+                   n_spread_resets=None,
                    ):
 
     if nlayers_current is None:
         nlayers_current = nlayers
+
+    which_qubits_for_prob_reset = None
+    if n_spread_resets is not None:
+        which_qubits_for_prob_reset = spread_rung_reset_qubits(Lx, Ly, int(n_spread_resets))
+        print(f"reset qubits (n_spread_resets={n_spread_resets}): {which_qubits_for_prob_reset}")
 
     # run all h for this parameter value
     results = {}
@@ -227,19 +292,33 @@ def running_for_hs(Lx=2, Ly=2, nlayers_current=2, howoften_toreset=7, trials=10,
             branch_chunk_size=branch_chunk_size,
             max_reset_branches=max_reset_branches,
             shared_reset_theta=shared_reset_theta,
+            which_qubits_for_prob_reset=which_qubits_for_prob_reset,
         )
 
         final_E, final_purity, all_E, all_P, all_param, all_grads, all_bond_dims, sv_per_step, reset_thetas_per_step = ansatz.optimize(
-            # Without this the whole run produces no HDF5 at all, and every
-            # timing and memory field optimize() computes is discarded -- the
-            # only surviving artifacts were checkpoint.npz and the PNGs.
-            save_results=True,
+            # Saved explicitly below instead of via save_results=True, so the
+            # per-run HDF5 path comes back and can be copied into DPQC_RUN_DIR.
+            # Same call optimize() would make, same file contents.
+            save_results=False,
             track_params=track_params,
             track_grads=track_grads,
             track_bond_dim=track_bond_dim,
             track_singular_values_per_step=track_singular_values_per_step,
             singular_value_trial_idx=singular_value_trial_idx,
         )
+        # Without this the whole run produces no HDF5 at all, and every timing
+        # and memory field optimize() computes is discarded -- the only
+        # surviving artifacts were checkpoint.npz and the PNGs.
+        _, individual_h5 = ansatz.save_results(final_E, final_purity, all_E, all_P,
+                                               all_param, all_grads, all_bond_dims)
+        run_dir = os.environ.get("DPQC_RUN_DIR")
+        if run_dir and individual_h5:
+            # One file pair per h, so a multi-h run cannot overwrite its configs.
+            suffix = "" if len(h_list) == 1 else f"_h{h}"
+            dest = os.path.join(run_dir, f"run{suffix}.h5")
+            shutil.copy2(individual_h5, dest)
+            print(f"Copied per-run HDF5 to: {dest}")
+            _write_run_config_json(ansatz, run_dir, h, filename=f"run_config{suffix}.json")
         reset_layers_used = None
         if use_prob_resets_ansatz and hasattr(ansatz, "active_reset_layers"):
             reset_layers_used = list(ansatz.active_reset_layers)
@@ -521,10 +600,10 @@ def get_reference_energy_density(Lx, Ly):
     the run collector scrapes -- so a 4x3 run looked like it had simply not
     converged.
     """
-    n_qubits = 2 * Lx * Ly - Lx - Ly
+    n_qubits = ToricCode(Lx, Ly).num_qubits
     if n_qubits <= 0:
         return None
-    return -(Lx * Ly + (Lx - 1) * (Ly - 1)) / n_qubits
+    return toric_ground_energy_h0(Lx, Ly) / n_qubits
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -858,6 +937,7 @@ if __name__ == "__main__":
     print(f"use_enumerated_resets={use_enumerated_resets}, branch_chunk_size={branch_chunk_size}, "
           f"max_reset_branches={max_reset_branches}, shared_reset_theta={shared_reset_theta}")
     print(f"seed={seed}, traj_seed={traj_seed}")
+    print(f"n_spread_resets={n_spread_resets}")
     print(f"unitary={unitary}, sparse={sparse}")
     print("=================================")
 
@@ -885,6 +965,7 @@ if __name__ == "__main__":
                              branch_chunk_size=branch_chunk_size,
                              max_reset_branches=max_reset_branches,
                              shared_reset_theta=shared_reset_theta,
+                             n_spread_resets=n_spread_resets,
                              )
     # ------------------------------------------------------------------------------------------
     # Choosing which results to obtain

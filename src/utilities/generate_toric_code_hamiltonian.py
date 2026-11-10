@@ -54,6 +54,50 @@ def perturbed_hamiltonian(Lx,Ly,h=0,nancillas=0,direction='Z'):
     return h0
 
 
+def toric_ground_energy_h0(Lx, Ly):
+    """Exact ground-state energy at h=0 on the open Lx x Ly lattice.
+
+    Every star and every plaquette can be satisfied at once, so
+    E0 = -(#stars + #plaquettes) = -(Lx*Ly + (Lx-1)*(Ly-1)). The qubit count is
+    ToricCode(Lx, Ly).num_qubits = 2*Lx*Ly - Lx - Ly.
+    """
+    return -float(Lx * Ly + (Lx - 1) * (Ly - 1))
+
+
+def spread_rung_reset_qubits(Lx, Ly, n_resets):
+    """Reset qubits spread evenly along an Lx x 2 ladder.
+
+    Uses the ladder's rungs (vertical edges, direction 1 -- the same edge type
+    the ansatz resets by default). There are Lx rungs, at x = 0 .. Lx-1.
+
+    * Lx >= n_resets: the rungs at x = round(linspace(0, Lx-1, n_resets)),
+      which are distinct whenever Lx >= n_resets.
+    * Lx <  n_resets: every rung, then horizontal edges in qubit-index order
+      (top row left to right, then bottom row) until n_resets are chosen.
+      For n_resets=4 this gives all four qubits at 2x2 and the three rungs plus
+      the top-left horizontal edge (qubit 0) at 3x2.
+
+    Returns a sorted list of qubit indices.
+    """
+    if Ly != 2:
+        raise ValueError(f"spread_rung_reset_qubits is defined for Lx x 2 ladders, got Ly={Ly}")
+    lattice = ToricCode(Lx, Ly)
+    if not 1 <= n_resets <= lattice.num_qubits:
+        raise ValueError(f"n_resets={n_resets} must be in 1..{lattice.num_qubits} for {Lx}x{Ly}")
+
+    rungs = [lattice.qubit_index(x, 0, 1) for x in range(Lx)]
+    if Lx >= n_resets:
+        xs = np.round(np.linspace(0, Lx - 1, n_resets)).astype(int)
+        chosen = [rungs[x] for x in xs]
+    else:
+        horizontals = sorted(q for y in range(Ly) for x in range(Lx)
+                             if (q := lattice.qubit_index(x, y, 0)) is not None)
+        chosen = rungs + horizontals[:n_resets - len(rungs)]
+    if len(set(chosen)) != n_resets:
+        raise RuntimeError(f"reset-qubit rule picked duplicates at {Lx}x{Ly}: {chosen}")
+    return sorted(int(q) for q in chosen)
+
+
 class ToricCode:
     def __init__(self, Lx, Ly):
         self.Lx = Lx  # Lattice size in x direction

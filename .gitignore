@@ -10,3 +10,11 @@ docs/*
 .whitesource
 outputs/*
 eddie_py312_venv/
+
+# Experiment raw data (large); plans, configs, CSV/JSON summaries and plots stay tracked
+experiments/**/run.h5
+experiments/**/analysis.h5
+experiments/**/checkpoint.npz
+experiments/**/checkpoint.npz.partial
+experiments/**/stderr.err
+experiments/**/py.pid
