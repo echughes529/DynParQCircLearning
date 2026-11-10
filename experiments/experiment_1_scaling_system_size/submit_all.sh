@@ -25,7 +25,7 @@ KIND=production
 LATTICES="2x2 3x2 4x2 5x2"
 METHODS="mc_n1 mc_n8 purified enumerated"
 MAXITER=2000
-TIME=""            # default: 06:00:00 for pilots (queue faster), 48:00:00 for production
+TIME=""            # default: 02:00:00 for pilots (short jobs backfill much sooner), 48:00:00 for production
 BOND_DIM=""
 DRY_RUN=0
 FORCE=0
@@ -44,7 +44,7 @@ HOWOFTEN_TOSAVE=10
 if [ "$KIND" = pilot ]; then
   MAXITER=200
   BOND_DIM=${BOND_DIM:-64}
-  TIME=${TIME:-06:00:00}
+  TIME=${TIME:-02:00:00}
 elif [ "$KIND" != production ]; then
   echo "error: KIND must be pilot or production" >&2; exit 1
 fi
