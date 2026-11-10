@@ -51,5 +51,31 @@
     ]
   },
   "bond_dim_needed": {},
-  "bond_dim": {}
+  "bond_dim": {
+    "2x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    },
+    "3x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    },
+    "4x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    },
+    "5x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    }
+  },
+  "bond_dim_note": "2x2-5x2 production run at 64 without waiting for the pilots (queue). 64 is >= the exact cap for MC/enumerated at these sizes (4, 8, 32, 64), so those runs are exact. Purified (chain N+8) is checked afterwards with bond_dim_requirement on the production checkpoints; redo if it needs > 64."
 }
