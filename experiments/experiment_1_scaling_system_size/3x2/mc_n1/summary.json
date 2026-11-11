@@ -1,0 +1,64 @@
+{
+  "lattice": "3x2",
+  "method": "mc_n1",
+  "status": "ok",
+  "Lx": 3,
+  "Ly": 2,
+  "n_qubits": 7,
+  "E0": -8.0,
+  "reset_mode": "traj",
+  "n_trajectories": 1,
+  "reset_qubits": [
+    0,
+    4,
+    5,
+    6
+  ],
+  "bond_dim": 64,
+  "n_mps_qubits": 7,
+  "trials": 5,
+  "maxiter": 2000,
+  "compile_seconds": 9.020774291995622,
+  "mean_step_seconds": 0.09255626204993468,
+  "total_seconds": 194.04074212981504,
+  "peak_gpu_bytes": 25228288.0,
+  "mean_live_gpu_bytes": 41914.88,
+  "device": "[CudaDevice(id=0)]",
+  "n_nonfinite_steps": 0,
+  "final_sigma_per_trial": [
+    0.0006536758267562021,
+    0.0069337297871879585,
+    0.015278457196528263,
+    0.13009974316578823,
+    0.03852703564205698
+  ],
+  "final_sigma_mean": 0.038298528323663525,
+  "training_sigma_mean": 0.19103976523612562,
+  "final_energy_per_trial": [
+    -7.9999932781642835,
+    -7.9999849386759285,
+    -7.999925264134911,
+    -7.995753276180159,
+    -7.999629752859271
+  ],
+  "final_energy_mean": -7.99905730200291,
+  "final_p_reset_mean": 7.19021357113648e-05,
+  "convergence_rel_tol": 0.001,
+  "n_converged": 5,
+  "steps_to_converge_per_trial": [
+    1910,
+    190,
+    1830,
+    330,
+    1200
+  ],
+  "seconds_to_converge_per_trial": [
+    185.86632911881316,
+    26.542033026991703,
+    178.55351041083486,
+    39.57642268000927,
+    120.76300983486726
+  ],
+  "steps_to_converge_mean": 1092.0,
+  "seconds_to_converge_mean": 110.26026101430325
+}
