@@ -137,6 +137,9 @@ AUTO_LADDER = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 51
 # the default one-per-plaquette set (Experiment 1). None keeps the default.
 N_SPREAD_RESETS = None
 
+# --ladder-ordering: column-by-column MPS order on Lx x 2 ladders.
+LADDER_ORDERING = False
+
 
 def reset_qubits_for(Lx, Ly):
     if N_SPREAD_RESETS is None:
@@ -180,6 +183,7 @@ def lattice_facts(Lx, Ly):
 
 
 def build(Lx, Ly, mode, bond_dim, use_optimal_ordering=True):
+    """(use_ladder_ordering comes from the module-level LADDER_ORDERING flag.)"""
     """One ansatz per (lattice, mode). Bond dimension is varied afterwards.
 
     The ordering search runs up to 2M random permutations inside __post_init__,
@@ -193,6 +197,7 @@ def build(Lx, Ly, mode, bond_dim, use_optimal_ordering=True):
         which_qubits_for_prob_reset=reset_qubits_for(Lx, Ly),
         trials=1, seed=SEED, bond_dim=bond_dim,
         use_optimal_ordering=use_optimal_ordering,
+        use_ladder_ordering=LADDER_ORDERING,
         use_trajectory_resets=(mode in ("traj", "none")),
         use_enumerated_resets=(mode == "enum"),
         # 3^R branches: 81 at 3x3 but 729 at 4x3, above the default guard of 512.
@@ -471,13 +476,17 @@ def main():
                         help="also measure at parameters sampled along a real training run "
                              "(a checkpoint.npz written by optimize()); comma-separated for "
                              "several, e.g. one per Experiment 1 pilot")
+    parser.add_argument("--ladder-ordering", action="store_true",
+                        help="column-by-column MPS order on Lx x 2 ladders "
+                             "(ToricCodeAnsatz.use_ladder_ordering)")
     parser.add_argument("--n-spread-resets", type=int, default=None,
                         help="reset this many rungs spread along an Lx x 2 ladder "
                              "(spread_rung_reset_qubits) instead of the default reset qubits")
     args = parser.parse_args()
 
-    global N_SPREAD_RESETS
+    global N_SPREAD_RESETS, LADDER_ORDERING
     N_SPREAD_RESETS = args.n_spread_resets
+    LADDER_ORDERING = args.ladder_ordering
 
     modes = tuple(m.strip() for m in args.modes.split(",") if m.strip())
     unknown = [m for m in modes if m not in MODES]

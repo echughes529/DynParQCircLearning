@@ -56,6 +56,12 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
     bond_dim: Optional[int] = None
     use_optimal_ordering: bool = True
+    # Lx x 2 ladders only: order the MPS chain column by column (top edge, rung,
+    # bottom edge at each x). Every claw then spans at most 2 sites at any Lx,
+    # with no search. Takes precedence over use_optimal_ordering, whose random
+    # search stops beating the natural order beyond ~8x2 (max claw distance
+    # grows like Lx either way). See _ladder_order.
+    use_ladder_ordering: bool = False
 
     # SVD-reduction feature flags (see tests/test_mps_gate_paths.py
     # and src/diagnostics/benchmark_mps_gate_paths.py for correctness/perf
@@ -294,7 +300,10 @@ class ToricCodeAnsatz(VariationalAnsatz):
             return max(abs(s2m[a] - s2m[b]) for a, b in claw_edges)
 
         natural_order = list(range(nq))
-        if self.use_optimal_ordering:
+        if self.use_ladder_ordering:
+            best_order = self._ladder_order()
+            n_trials = 0
+        elif self.use_optimal_ordering:
             _rng.seed(42)
             best_order = list(natural_order)
             best_dist = _max_claw_dist(best_order)
@@ -332,7 +341,7 @@ class ToricCodeAnsatz(VariationalAnsatz):
             for pos, sq in enumerate(best_order):
                 sys_to_mps[sq] = pos
             pos = nq
-        elif self.use_optimal_ordering:
+        elif self.use_optimal_ordering or self.use_ladder_ordering:
             # Inline: each reset qubit's ancilla pair(s) sit immediately after it.
             pending_by_sq = {}
             for (_layer, sq), a_idx in ancilla_idx_of.items():
@@ -390,7 +399,9 @@ class ToricCodeAnsatz(VariationalAnsatz):
         self.ordering_search_seconds = _time.perf_counter() - _build_start
 
         max_claw = max(abs(sys_to_mps[a] - sys_to_mps[b]) for a, b in claw_edges)
-        if self._ancilla_free_resets:
+        if self.use_ladder_ordering:
+            ordering_desc = "ladder (column-by-column) ordering, no search"
+        elif self._ancilla_free_resets:
             mode = "enumerated" if self.use_enumerated_resets else "trajectory"
             ordering_desc = (f"{mode}-reset ordering ({n_trials} random trials)"
                              if self.use_optimal_ordering else
@@ -410,6 +421,27 @@ class ToricCodeAnsatz(VariationalAnsatz):
             print(f"  Max claw distance: {max_claw}, max CCX distance: {max_ccx}")
         print(f"  sys_to_mps: {self.sys_to_mps}")
 
+    def _ladder_order(self):
+        """System qubits in column order along an Lx x 2 ladder.
+
+        At each x: top horizontal edge (x,0)-(x+1,0), the rung (x,0)-(x,1), then
+        the bottom horizontal edge (x,1)-(x+1,1); the last column has only its
+        rung. Every claw (bottom edge x with rung x, top edge x and rung x+1)
+        then joins sites at most 2 apart, independent of Lx, so the bond
+        dimension a 2-layer circuit needs stays bounded as the ladder grows.
+        """
+        if self.Ly != 2:
+            raise ValueError(f"use_ladder_ordering needs an Lx x 2 lattice, got {self.Lx}x{self.Ly}")
+        lat = self.lattice
+        order = []
+        for x in range(self.Lx):
+            for q in (lat.qubit_index(x, 0, 0), lat.qubit_index(x, 0, 1), lat.qubit_index(x, 1, 0)):
+                if q is not None:
+                    order.append(q)
+        if sorted(order) != list(range(lat.num_qubits)):
+            raise RuntimeError(f"ladder order is not a permutation of the {lat.num_qubits} qubits")
+        return order
+
     def __hash__(self):
         reset_layers_key = None if self.reset_layers is None else tuple(self.active_reset_layers)
         return hash((self.Lx, self.Ly, self.nlayers, self.howoften_toreset, self.h,
@@ -419,7 +451,8 @@ class ToricCodeAnsatz(VariationalAnsatz):
                     self.cartan_mode, self.toffoli_mode,
                     self.use_trajectory_resets, self.n_trajectories,
                     self.use_enumerated_resets, self.branch_chunk_size,
-                    self.shared_reset_theta))
+                    self.shared_reset_theta, self.use_optimal_ordering,
+                    self.use_ladder_ordering))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__

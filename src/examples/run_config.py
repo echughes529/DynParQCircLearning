@@ -99,6 +99,9 @@ use_prob_resets_ansatz = _env("use_prob_resets_ansatz", True)
 use_mps = _env("use_mps", True)
 bond_dim = _env("bond_dim", 64)
 use_optimal_ordering = _env("use_optimal_ordering", True)
+# Lx x 2 ladders: column-by-column MPS order (claws span <= 2 sites at any Lx).
+# Overrides use_optimal_ordering. See ToricCodeAnsatz.use_ladder_ordering.
+use_ladder_ordering = _env("use_ladder_ordering", False)
 
 # Reset implementation. True samples ONE branch of the reset channel per step
 # (ancilla-free, chain stays at nq sites, stochastic but unbiased energy and

@@ -41,6 +41,47 @@ def test_spread_rule_rejects_non_ladder():
 
 
 # ----------------------------------------------------------------------------
+# Ladder ordering
+# ----------------------------------------------------------------------------
+def _ladder_ansatz(Lx, purified=False, **kw):
+    from src.utilities.ansatz_classes import ToricCodeAnsatz
+    return ToricCodeAnsatz(
+        Lx=Lx, Ly=2, nlayers=2, trials=1, maxiter=1, bond_dim=64, seed=3,
+        use_prob_resets_ansatz=True, unitary=True, sparse=False, reset_layers=[1],
+        which_qubits_for_prob_reset=spread_rung_reset_qubits(Lx, 2, 4),
+        **{"use_trajectory_resets": not purified, **kw})
+
+
+@pytest.mark.parametrize("Lx", [2, 3, 5, 12, 30])
+def test_ladder_order_bounded_claws(Lx):
+    for purified, bound in ((False, 2), (True, 6)):
+        a = _ladder_ansatz(Lx, purified=purified, use_ladder_ordering=True)
+        s = a.sys_to_mps
+        assert sorted(s) == list(range(a.lattice.num_qubits))
+        assert len(set(s.values())) == a.lattice.num_qubits
+        # the claws the circuit applies, independent of Lx
+        assert max(abs(s[x] - s[y]) for x, y in a.lattice.all_claws()) <= bound
+        assert a.n_mps_qubits == a.lattice.num_qubits + (8 if purified else 0)
+
+
+def test_ladder_order_rejects_non_ladder():
+    from src.utilities.ansatz_classes import ToricCodeAnsatz
+    with pytest.raises(ValueError):
+        ToricCodeAnsatz(Lx=3, Ly=3, nlayers=2, trials=1, maxiter=1, bond_dim=16,
+                        use_prob_resets_ansatz=True, reset_layers=[1],
+                        use_ladder_ordering=True)
+
+
+def test_ladder_order_same_energy():
+    for purified in (False, True):
+        kw = {} if purified else dict(use_trajectory_resets=False, use_enumerated_resets=True)
+        a = _ladder_ansatz(3, purified=purified, use_ladder_ordering=False, **kw)
+        b = _ladder_ansatz(3, purified=purified, use_ladder_ordering=True, **kw)
+        p = a.initparams[0]
+        assert abs(float(a.energy_from_params(p)) - float(b.energy_from_params(p))) < 1e-10
+
+
+# ----------------------------------------------------------------------------
 # Convergence rule
 # ----------------------------------------------------------------------------
 def test_steps_to_converge():

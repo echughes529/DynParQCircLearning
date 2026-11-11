@@ -87,6 +87,7 @@ def build_enumerated_twin(cfg):
         Lx=cfg["Lx"], Ly=cfg["Ly"], nlayers=cfg["nlayers"], h=cfg["h"],
         trials=1, maxiter=1, bond_dim=cfg["bond_dim"],
         use_optimal_ordering=cfg["use_optimal_ordering"],
+        use_ladder_ordering=cfg.get("use_ladder_ordering", False),
         use_prob_resets_ansatz=True, unitary=True, sparse=False, use_mps=True,
         reset_layers=cfg["reset_layers"],
         which_qubits_for_prob_reset=cfg["reset_qubits"],
