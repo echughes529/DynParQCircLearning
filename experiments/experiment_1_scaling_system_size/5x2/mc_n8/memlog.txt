@@ -1,0 +1,64 @@
+19:22:14 ram_mb=25547 proc_rss_mb=21 proc_hwm_mb=22 gpu_mb=0
+19:22:44 ram_mb=26450 proc_rss_mb=1263 proc_hwm_mb=1263 gpu_mb=861
+19:23:14 ram_mb=27674 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:23:45 ram_mb=27690 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:24:15 ram_mb=27730 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:24:45 ram_mb=27684 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:25:15 ram_mb=27679 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:25:45 ram_mb=27777 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:26:15 ram_mb=27786 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:26:45 ram_mb=27720 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:27:15 ram_mb=27732 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:27:45 ram_mb=27773 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:28:15 ram_mb=27725 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:28:45 ram_mb=27543 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:29:15 ram_mb=27669 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:29:45 ram_mb=27648 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:30:15 ram_mb=27717 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:30:45 ram_mb=28637 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:31:16 ram_mb=28602 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:31:46 ram_mb=28574 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:32:16 ram_mb=28576 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:32:46 ram_mb=28644 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:33:16 ram_mb=28639 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:33:46 ram_mb=28638 proc_rss_mb=2468 proc_hwm_mb=2477 gpu_mb=1477
+19:34:16 ram_mb=28667 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:34:46 ram_mb=28585 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:35:16 ram_mb=28607 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:35:46 ram_mb=28596 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:36:16 ram_mb=28689 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:36:46 ram_mb=28643 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:37:16 ram_mb=28644 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:37:46 ram_mb=28619 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:38:16 ram_mb=28650 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:38:47 ram_mb=28687 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:39:17 ram_mb=28701 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:39:47 ram_mb=28700 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:40:17 ram_mb=28745 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:40:47 ram_mb=28696 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:41:17 ram_mb=28677 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:41:47 ram_mb=28962 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:42:17 ram_mb=28964 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:42:47 ram_mb=28926 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:43:17 ram_mb=28939 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:43:47 ram_mb=28969 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:44:17 ram_mb=28776 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:44:47 ram_mb=28683 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:45:17 ram_mb=28712 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:45:47 ram_mb=28687 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:46:18 ram_mb=28677 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:46:48 ram_mb=28675 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:47:18 ram_mb=28637 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:47:48 ram_mb=28736 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:48:18 ram_mb=28726 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:48:48 ram_mb=28723 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+19:49:18 ram_mb=28735 proc_rss_mb=2469 proc_hwm_mb=2477 gpu_mb=1477
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=2015
+[memlog final] node_ram: used=26Gi avail=477Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3709840           exp1_prod_5x2_mc_n8                         00:27:13    RUNNING 
+3709840.bat+                    batch                         00:27:13    RUNNING 

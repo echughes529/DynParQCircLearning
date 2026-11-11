@@ -1,0 +1,11 @@
+18:06:08 ram_mb=24071 proc_rss_mb=18 proc_hwm_mb=18 gpu_mb=0
+18:06:38 ram_mb=26261 proc_rss_mb=1551 proc_hwm_mb=1551 gpu_mb=423
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=1244
+[memlog final] node_ram: used=24Gi avail=479Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3709709      exp1_pilo_2x2_enumerated                         00:00:48    RUNNING 
+3709709.bat+                    batch                         00:00:48    RUNNING 

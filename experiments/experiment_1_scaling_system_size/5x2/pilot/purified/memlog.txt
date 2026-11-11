@@ -1,0 +1,35 @@
+18:27:10 ram_mb=24751 proc_rss_mb=20 proc_hwm_mb=20 gpu_mb=0
+18:27:40 ram_mb=25758 proc_rss_mb=1327 proc_hwm_mb=1328 gpu_mb=285
+18:28:10 ram_mb=26118 proc_rss_mb=1629 proc_hwm_mb=1630 gpu_mb=285
+18:28:40 ram_mb=26894 proc_rss_mb=2408 proc_hwm_mb=2469 gpu_mb=285
+18:29:10 ram_mb=26868 proc_rss_mb=2383 proc_hwm_mb=2469 gpu_mb=423
+18:29:40 ram_mb=27059 proc_rss_mb=2443 proc_hwm_mb=2613 gpu_mb=423
+18:30:10 ram_mb=28499 proc_rss_mb=3618 proc_hwm_mb=3618 gpu_mb=423
+18:30:40 ram_mb=29950 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:31:10 ram_mb=29935 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:31:40 ram_mb=29980 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:32:10 ram_mb=21394 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:32:41 ram_mb=21470 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:33:11 ram_mb=21804 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:33:41 ram_mb=21937 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:34:11 ram_mb=22192 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:34:41 ram_mb=32179 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:35:11 ram_mb=36027 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:35:41 ram_mb=24958 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:36:11 ram_mb=25341 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:36:41 ram_mb=26060 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:37:11 ram_mb=26418 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:37:41 ram_mb=26696 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:38:11 ram_mb=28820 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:38:41 ram_mb=28923 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:39:11 ram_mb=28930 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+18:39:41 ram_mb=20674 proc_rss_mb=5153 proc_hwm_mb=5221 gpu_mb=1405
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=4729
+[memlog final] node_ram: used=15Gi avail=487Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3709720        exp1_pilo_5x2_purified                         00:13:04    RUNNING 
+3709720.bat+                    batch                         00:13:04    RUNNING 

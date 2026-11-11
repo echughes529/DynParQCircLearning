@@ -1,0 +1,20 @@
+18:00:33 ram_mb=32159 proc_rss_mb=12 proc_hwm_mb=12 gpu_mb=0
+18:01:03 ram_mb=33232 proc_rss_mb=1548 proc_hwm_mb=1549 gpu_mb=849
+18:01:33 ram_mb=33587 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:02:03 ram_mb=33479 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:02:33 ram_mb=33524 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:03:03 ram_mb=33507 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:03:33 ram_mb=33433 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:04:03 ram_mb=33811 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:04:34 ram_mb=25460 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:05:04 ram_mb=26041 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+18:05:34 ram_mb=26638 proc_rss_mb=1858 proc_hwm_mb=1858 gpu_mb=865
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=2178
+[memlog final] node_ram: used=24Gi avail=478Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3709706           exp1_pilo_2x2_mc_n1                         00:05:27    RUNNING 
+3709706.bat+                    batch                         00:05:27    RUNNING 

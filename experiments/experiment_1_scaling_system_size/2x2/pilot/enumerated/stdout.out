@@ -1,0 +1,165 @@
+========== RUN METADATA ==========
+Job name:   exp1_pilo_2x2_enumerated
+Job ID:     3709709
+Host:       crannog04.inf.ed.ac.uk
+Start time: Tue 10 Nov 18:06:06 GMT 2026
+GPU info:   NVIDIA A40, 46068 MiB
+Git commit: 3ec31790b55aefd45cf71a54fe109e303dee1a09
+Git status: 12 files changed
+Run dir:    experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated
+==================================
+[generate_ansatz] SVD forward kernel patched: batched-Jacobi -> QR (DPQC_SVD_FWD_ALG)
+===== Python run parameters =====
+Lx=2, Ly=2
+h_list=[0]
+nlayers=2
+howoften_toreset=7
+trials=5, maxiter=200
+howoften_tosave=10
+outdir=experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated/plots
+use_mps=True, bond_dim=64
+use_optimal_ordering=True
+use_prob_resets_ansatz=True
+reset_layers=[1]
+use_trajectory_resets=False, n_trajectories=1
+use_enumerated_resets=True, branch_chunk_size=None, max_reset_branches=512, shared_reset_theta=True
+seed=1234, traj_seed=None
+n_spread_resets=4
+unitary=True, sparse=False
+=================================
+reset qubits (n_spread_resets=4): [0, 1, 2, 3]
+[ToricCodeAnsatz] enumerated resets: 4 reset events -> 81 Kraus branches per energy evaluation
+MPS enumerated-reset ordering (500000 random trials): 4 qubits (4 system + 0 ancilla) [1.5s]
+  System qubit order: [0, 1, 2, 3]
+  Max claw distance: 2, reset sites: [0, 1, 2, 3]
+  sys_to_mps: {0: 0, 1: 1, 2: 2, 3: 3}
+{'trials': 5, 'maxiter': 200, 'howoften_tosave': 10, 'learning_rate': 0.01, 'sparse': False, 'use_mps': True, 'normalize_state': True, 'seed': 1234, 'perform_noisy_simulations': False, 'noise_rate': 0.05, 'number_of_shots': 500, 'Lx': 2, 'Ly': 2, 'nlayers': 2, 'howoften_toreset': 7, 'h': 0, 'use_prob_resets_ansatz': True, 'which_qubits_for_prob_reset': [0, 1, 2, 3], 'prob_reset_direction': 1, 'reset_layers': [1], 'use_small_angle_initialization': False, 'range_initial_parameters': 0, 'unitary': True, 'bond_dim': 64, 'use_optimal_ordering': True, 'cartan_mode': 'fused', 'toffoli_mode': 'direct', 'use_trajectory_resets': False, 'n_trajectories': 1, 'traj_seed': None, 'baseline_beta': 0.9, 'use_enumerated_resets': True, 'max_reset_branches': 512, 'branch_chunk_size': None, 'shared_reset_theta': True, '_ancilla_free_resets': True, 'split_conf': {'max_singular_values': 64}, 'lattice': <src.utilities.generate_toric_code_hamiltonian.ToricCode object at 0x735a1c0d7cb0>, 'nplaquettes': 1, 'nresets_per_layer': 4, 'active_reset_layers': [1], 'total_resets': 4, 'nancillas': 0, 'builder_nparams': 70, '_param_gather': Array([ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
+       17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
+       34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+       51, 52, 53, 54, 54, 54, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
+       65, 66], dtype=int32), 'nparams': 67, '_reset_branches': Array([[0, 0, 0, 0],
+       [0, 0, 0, 1],
+       [0, 0, 0, 2],
+       [0, 0, 1, 0],
+       [0, 0, 1, 1],
+       [0, 0, 1, 2],
+       [0, 0, 2, 0],
+       [0, 0, 2, 1],
+       [0, 0, 2, 2],
+       [0, 1, 0, 0],
+       [0, 1, 0, 1],
+       [0, 1, 0, 2],
+       [0, 1, 1, 0],
+       [0, 1, 1, 1],
+       [0, 1, 1, 2],
+       [0, 1, 2, 0],
+       [0, 1, 2, 1],
+       [0, 1, 2, 2],
+       [0, 2, 0, 0],
+       [0, 2, 0, 1],
+       [0, 2, 0, 2],
+       [0, 2, 1, 0],
+       [0, 2, 1, 1],
+       [0, 2, 1, 2],
+       [0, 2, 2, 0],
+       [0, 2, 2, 1],
+       [0, 2, 2, 2],
+       [1, 0, 0, 0],
+       [1, 0, 0, 1],
+       [1, 0, 0, 2],
+       [1, 0, 1, 0],
+       [1, 0, 1, 1],
+       [1, 0, 1, 2],
+       [1, 0, 2, 0],
+       [1, 0, 2, 1],
+       [1, 0, 2, 2],
+       [1, 1, 0, 0],
+       [1, 1, 0, 1],
+       [1, 1, 0, 2],
+       [1, 1, 1, 0],
+       [1, 1, 1, 1],
+       [1, 1, 1, 2],
+       [1, 1, 2, 0],
+       [1, 1, 2, 1],
+       [1, 1, 2, 2],
+       [1, 2, 0, 0],
+       [1, 2, 0, 1],
+       [1, 2, 0, 2],
+       [1, 2, 1, 0],
+       [1, 2, 1, 1],
+       [1, 2, 1, 2],
+       [1, 2, 2, 0],
+       [1, 2, 2, 1],
+       [1, 2, 2, 2],
+       [2, 0, 0, 0],
+       [2, 0, 0, 1],
+       [2, 0, 0, 2],
+       [2, 0, 1, 0],
+       [2, 0, 1, 1],
+       [2, 0, 1, 2],
+       [2, 0, 2, 0],
+       [2, 0, 2, 1],
+       [2, 0, 2, 2],
+       [2, 1, 0, 0],
+       [2, 1, 0, 1],
+       [2, 1, 0, 2],
+       [2, 1, 1, 0],
+       [2, 1, 1, 1],
+       [2, 1, 1, 2],
+       [2, 1, 2, 0],
+       [2, 1, 2, 1],
+       [2, 1, 2, 2],
+       [2, 2, 0, 0],
+       [2, 2, 0, 1],
+       [2, 2, 0, 2],
+       [2, 2, 1, 0],
+       [2, 2, 1, 1],
+       [2, 2, 1, 2],
+       [2, 2, 2, 0],
+       [2, 2, 2, 1],
+       [2, 2, 2, 2]], dtype=int32), 'sys_to_mps': {0: 0, 1: 1, 2: 2, 3: 3}, 'ancilla_mps_positions': [], 'n_mps_qubits': 4, 'sys_mps_positions': [0, 1, 2, 3], 'mps_claws': [(1, 2), (1, 0), (1, 3)], 'mps_reset_qubits': [0, 1, 2, 3], 'ordering_search_seconds': 1.5159202689974336}
+[ToricCodeAnsatz] parameter init seed: 1234 (pass seed=1234 to reproduce this run)
+[ToricCodeAnsatz] jax devices: [CudaDevice(id=0)]
+[ToricCodeAnsatz] device memory before step 0: live 0.00 GiB, peak 0.00 GiB (XLA_PYTHON_CLIENT_PREALLOCATE=false)
+step 0: energy: [-0.0606872  -0.1009504  -0.10226691 -0.96937205  0.27634987] | gradient norm: [2.33490202 2.19461875 1.48509513 3.50616503 1.39228975]
+step 10: energy: [-1.66864468 -1.40639079 -1.3955621  -2.96997525 -0.46348216] | gradient norm: [3.01103553 2.57175478 2.61062083 3.08951889 1.44928495]
+step 20: energy: [-3.09699776 -2.95634577 -2.74697741 -3.95344506 -1.26386154] | gradient norm: [2.85590499 2.5055349  2.19823567 1.39458267 2.18334206]
+step 30: energy: [-3.86559415 -3.92428737 -3.4366544  -4.13244142 -2.24756259] | gradient norm: [2.32568506 1.50318819 1.60629566 1.1515465  2.82691069]
+step 40: energy: [-4.25518283 -4.2939208  -3.77661534 -4.28523515 -2.99998548] | gradient norm: [1.91347645 1.11140635 1.0609915  0.72393344 3.01396065]
+step 50: energy: [-4.56852529 -4.51483083 -3.94632099 -4.47489336 -3.53634137] | gradient norm: [1.47869344 0.81145512 0.77861333 0.69020608 2.9551589 ]
+step 60: energy: [-4.77962813 -4.69547764 -4.05410534 -4.70121127 -4.01962003] | gradient norm: [1.05973415 0.53353129 0.72154074 0.64527798 2.65931172]
+step 70: energy: [-4.90594542 -4.80146954 -4.15532982 -4.86994094 -4.40678125] | gradient norm: [0.65233053 0.42965503 0.78265054 0.43157577 2.26287835]
+step 80: energy: [-4.9660413  -4.86914082 -4.28813395 -4.94641151 -4.67130448] | gradient norm: [0.35438809 0.36460261 0.92296664 0.30546837 1.79342878]
+step 90: energy: [-4.98959482 -4.91839196 -4.47671917 -4.98000189 -4.83515062] | gradient norm: [0.16233338 0.25506834 1.05148928 0.17185534 1.332369  ]
+step 100: energy: [-4.99751115 -4.95015551 -4.69329082 -4.99040586 -4.92270547] | gradient norm: [0.06363123 0.18381964 1.00940258 0.12566298 0.93330696]
+step 110: energy: [-4.99933174 -4.96969039 -4.87293368 -4.99545616 -4.96666331] | gradient norm: [0.04483729 0.1340709  0.72753101 0.07538071 0.61395757]
+step 120: energy: [-4.99969095 -4.98073573 -4.96907029 -4.99767565 -4.98701351] | gradient norm: [0.04051701 0.09770699 0.30775902 0.05353739 0.37877814]
+step 130: energy: [-4.99983379 -4.98678458 -4.99116916 -4.99899435 -4.99538773] | gradient norm: [0.02859466 0.06873541 0.10423909 0.03422741 0.21653041]
+step 140: energy: [-4.99992257 -4.99011797 -4.99394791 -4.99959169 -4.99838055] | gradient norm: [0.0163417  0.05189254 0.14959577 0.02079598 0.11242585]
+step 150: energy: [-4.99996723 -4.99207895 -4.99658435 -4.99981709 -4.99931385] | gradient norm: [0.00767211 0.04155085 0.10821156 0.01436889 0.05063114]
+step 160: energy: [-4.99998637 -4.99336528 -4.99847647 -4.99992351 -4.9995714 ] | gradient norm: [0.00441751 0.03444765 0.04711607 0.00920065 0.017788  ]
+step 170: energy: [-4.99999488 -4.99430773 -4.99922964 -4.9999718  -4.99965148] | gradient norm: [0.00332554 0.02927422 0.02450437 0.00493742 0.00677032]
+step 180: energy: [-4.9999982  -4.99504751 -4.99954907 -4.99998939 -4.99969944] | gradient norm: [0.00222361 0.02558085 0.0226497  0.00280675 0.00811076]
+step 190: energy: [-4.99999941 -4.99565093 -4.99972586 -4.99999591 -4.99974295] | gradient norm: [0.00117606 0.02287293 0.01505076 0.00171294 0.00827186]
+[ToricCodeAnsatz] peak memory: GPU 0.08 GiB (live at exit 0.00 GiB), host RSS 1.71 GiB
+Results saved to master file: ./results/toriccode.h5
+Individual run saved to: ./tmp/toriccode_20261110_180650_3709709_195430.h5
+Copied per-run HDF5 to: experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated/run.h5
+Wrote run config to: experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated/run_config.json
+Saved plot to: experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated/plots/2x2_nlayers_2_resets_True.png
+all_grads shape for h=0: (5, 20, 67)
+gradient_norms shape for h=0: (5, 20)
+gradient_norms min/max for h=0: 0.0011760558258016222, 3.5061650286741264
+Saved gradient-norm plot to: experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated/plots/gradient_norm_h_0_all_trials.png
+reset_layers input: [1]
+reset_layers used: [1]
+n_reset_thetas: 1
+theta parameter indices: [np.int64(54)]
+abs(theta_history) shape: (5, 20, 1)
+abs(theta_history) min/max: 2.0871109316919368e-07, 1.2059395074154637
+Saved plot to: experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated/plots/reset_abs_theta_1_all_trials.png
+h=0: 5/5 trials (100.0%) within 0.1% of reference energy density (-1.25)
+Saved final energies plot to: experiments/experiment_1_scaling_system_size/2x2/pilot/enumerated/plots/final_energies_h_0_by_trial.png
+End time:   Tue 10 Nov 18:06:54 GMT 2026
+Run time:   00:00:48 (48 s)
+Job finished with exit code: 0

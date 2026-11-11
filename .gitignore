@@ -18,3 +18,9 @@ experiments/**/checkpoint.npz
 experiments/**/checkpoint.npz.partial
 experiments/**/stderr.err
 experiments/**/py.pid
+# Generic plots from plot_training_curve_tc inside experiment run folders: duplicated
+# by the analysis plots (training_curve/sigma/p_reset) or regenerable from run.h5
+experiments/**/plots/*_nlayers_*_resets_*.png
+experiments/**/plots/final_energies_*.png
+experiments/**/plots/gradient_norm_*.png
+experiments/**/plots/reset_abs_theta_*.png

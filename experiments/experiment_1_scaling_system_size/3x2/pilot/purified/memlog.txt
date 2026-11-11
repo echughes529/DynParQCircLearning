@@ -1,0 +1,17 @@
+18:09:31 ram_mb=23972 proc_rss_mb=13 proc_hwm_mb=16 gpu_mb=0
+18:10:01 ram_mb=26168 proc_rss_mb=1315 proc_hwm_mb=1316 gpu_mb=285
+18:10:31 ram_mb=27160 proc_rss_mb=1807 proc_hwm_mb=1810 gpu_mb=423
+18:11:02 ram_mb=28938 proc_rss_mb=2803 proc_hwm_mb=2803 gpu_mb=423
+18:11:32 ram_mb=27544 proc_rss_mb=3679 proc_hwm_mb=3707 gpu_mb=929
+18:12:02 ram_mb=28161 proc_rss_mb=3679 proc_hwm_mb=3707 gpu_mb=929
+18:12:32 ram_mb=28992 proc_rss_mb=3679 proc_hwm_mb=3707 gpu_mb=929
+18:13:02 ram_mb=27003 proc_rss_mb=3679 proc_hwm_mb=3707 gpu_mb=929
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=3201
+[memlog final] node_ram: used=23Gi avail=480Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3709712        exp1_pilo_3x2_purified                         00:03:43    RUNNING 
+3709712.bat+                    batch                         00:03:43    RUNNING 

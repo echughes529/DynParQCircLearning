@@ -1,0 +1,357 @@
+========== RUN METADATA ==========
+Job name:   exp1_prod_4x2_enumerated
+Job ID:     3709838
+Host:       crannog06.inf.ed.ac.uk
+Start time: Tue 10 Nov 19:21:42 GMT 2026
+GPU info:   NVIDIA A40, 46068 MiB
+Git commit: 3ec31790b55aefd45cf71a54fe109e303dee1a09
+Git status: 15 files changed
+Run dir:    experiments/experiment_1_scaling_system_size/4x2/enumerated
+==================================
+[generate_ansatz] SVD forward kernel patched: batched-Jacobi -> QR (DPQC_SVD_FWD_ALG)
+===== Python run parameters =====
+Lx=4, Ly=2
+h_list=[0]
+nlayers=2
+howoften_toreset=7
+trials=5, maxiter=2000
+howoften_tosave=10
+outdir=experiments/experiment_1_scaling_system_size/4x2/enumerated/plots
+use_mps=True, bond_dim=64
+use_optimal_ordering=True
+use_prob_resets_ansatz=True
+reset_layers=[1]
+use_trajectory_resets=False, n_trajectories=1
+use_enumerated_resets=True, branch_chunk_size=None, max_reset_branches=512, shared_reset_theta=True
+seed=1234, traj_seed=None
+n_spread_resets=4
+unitary=True, sparse=False
+=================================
+reset qubits (n_spread_resets=4): [6, 7, 8, 9]
+[ToricCodeAnsatz] enumerated resets: 4 reset events -> 81 Kraus branches per energy evaluation
+MPS enumerated-reset ordering (1000000 random trials): 10 qubits (10 system + 0 ancilla) [5.7s]
+  System qubit order: [9, 5, 2, 8, 4, 1, 7, 3, 0, 6]
+  Max claw distance: 2, reset sites: [9, 6, 3, 0]
+  sys_to_mps: {9: 0, 5: 1, 2: 2, 8: 3, 4: 4, 1: 5, 7: 6, 3: 7, 0: 8, 6: 9}
+{'trials': 5, 'maxiter': 2000, 'howoften_tosave': 10, 'learning_rate': 0.01, 'sparse': False, 'use_mps': True, 'normalize_state': True, 'seed': 1234, 'perform_noisy_simulations': False, 'noise_rate': 0.05, 'number_of_shots': 500, 'Lx': 4, 'Ly': 2, 'nlayers': 2, 'howoften_toreset': 7, 'h': 0, 'use_prob_resets_ansatz': True, 'which_qubits_for_prob_reset': [6, 7, 8, 9], 'prob_reset_direction': 1, 'reset_layers': [1], 'use_small_angle_initialization': False, 'range_initial_parameters': 0, 'unitary': True, 'bond_dim': 64, 'use_optimal_ordering': True, 'cartan_mode': 'fused', 'toffoli_mode': 'direct', 'use_trajectory_resets': False, 'n_trajectories': 1, 'traj_seed': None, 'baseline_beta': 0.9, 'use_enumerated_resets': True, 'max_reset_branches': 512, 'branch_chunk_size': None, 'shared_reset_theta': True, '_ancilla_free_resets': True, 'split_conf': {'max_singular_values': 64}, 'lattice': <src.utilities.generate_toric_code_hamiltonian.ToricCode object at 0x7c4fa7c7de50>, 'nplaquettes': 3, 'nresets_per_layer': 4, 'active_reset_layers': [1], 'total_resets': 4, 'nancillas': 0, 'builder_nparams': 196, '_param_gather': Array([  0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,  12,
+        13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,
+        26,  27,  28,  29,  30,  31,  32,  33,  34,  35,  36,  37,  38,
+        39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51,
+        52,  53,  54,  55,  56,  57,  58,  59,  60,  61,  62,  63,  64,
+        65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,
+        78,  79,  80,  81,  82,  83,  84,  85,  86,  87,  88,  89,  90,
+        91,  92,  93,  94,  95,  96,  97,  98,  99, 100, 101, 102, 103,
+       104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
+       117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129,
+       130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142,
+       143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155,
+       156, 157, 158, 159, 160, 161, 162, 162, 162, 162, 163, 164, 165,
+       166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178,
+       179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
+       192], dtype=int32), 'nparams': 193, '_reset_branches': Array([[0, 0, 0, 0],
+       [0, 0, 0, 1],
+       [0, 0, 0, 2],
+       [0, 0, 1, 0],
+       [0, 0, 1, 1],
+       [0, 0, 1, 2],
+       [0, 0, 2, 0],
+       [0, 0, 2, 1],
+       [0, 0, 2, 2],
+       [0, 1, 0, 0],
+       [0, 1, 0, 1],
+       [0, 1, 0, 2],
+       [0, 1, 1, 0],
+       [0, 1, 1, 1],
+       [0, 1, 1, 2],
+       [0, 1, 2, 0],
+       [0, 1, 2, 1],
+       [0, 1, 2, 2],
+       [0, 2, 0, 0],
+       [0, 2, 0, 1],
+       [0, 2, 0, 2],
+       [0, 2, 1, 0],
+       [0, 2, 1, 1],
+       [0, 2, 1, 2],
+       [0, 2, 2, 0],
+       [0, 2, 2, 1],
+       [0, 2, 2, 2],
+       [1, 0, 0, 0],
+       [1, 0, 0, 1],
+       [1, 0, 0, 2],
+       [1, 0, 1, 0],
+       [1, 0, 1, 1],
+       [1, 0, 1, 2],
+       [1, 0, 2, 0],
+       [1, 0, 2, 1],
+       [1, 0, 2, 2],
+       [1, 1, 0, 0],
+       [1, 1, 0, 1],
+       [1, 1, 0, 2],
+       [1, 1, 1, 0],
+       [1, 1, 1, 1],
+       [1, 1, 1, 2],
+       [1, 1, 2, 0],
+       [1, 1, 2, 1],
+       [1, 1, 2, 2],
+       [1, 2, 0, 0],
+       [1, 2, 0, 1],
+       [1, 2, 0, 2],
+       [1, 2, 1, 0],
+       [1, 2, 1, 1],
+       [1, 2, 1, 2],
+       [1, 2, 2, 0],
+       [1, 2, 2, 1],
+       [1, 2, 2, 2],
+       [2, 0, 0, 0],
+       [2, 0, 0, 1],
+       [2, 0, 0, 2],
+       [2, 0, 1, 0],
+       [2, 0, 1, 1],
+       [2, 0, 1, 2],
+       [2, 0, 2, 0],
+       [2, 0, 2, 1],
+       [2, 0, 2, 2],
+       [2, 1, 0, 0],
+       [2, 1, 0, 1],
+       [2, 1, 0, 2],
+       [2, 1, 1, 0],
+       [2, 1, 1, 1],
+       [2, 1, 1, 2],
+       [2, 1, 2, 0],
+       [2, 1, 2, 1],
+       [2, 1, 2, 2],
+       [2, 2, 0, 0],
+       [2, 2, 0, 1],
+       [2, 2, 0, 2],
+       [2, 2, 1, 0],
+       [2, 2, 1, 1],
+       [2, 2, 1, 2],
+       [2, 2, 2, 0],
+       [2, 2, 2, 1],
+       [2, 2, 2, 2]], dtype=int32), 'sys_to_mps': {9: 0, 5: 1, 2: 2, 8: 3, 4: 4, 1: 5, 7: 6, 3: 7, 0: 8, 6: 9}, 'ancilla_mps_positions': [], 'n_mps_qubits': 10, 'sys_mps_positions': [8, 5, 2, 7, 4, 1, 9, 6, 3, 0], 'mps_claws': [(7, 9), (4, 6), (1, 3), (7, 8), (4, 5), (1, 2), (7, 6), (4, 3), (1, 0)], 'mps_reset_qubits': [9, 6, 3, 0], 'ordering_search_seconds': 5.713894266000352}
+[ToricCodeAnsatz] parameter init seed: 1234 (pass seed=1234 to reproduce this run)
+[ToricCodeAnsatz] jax devices: [CudaDevice(id=0)]
+[ToricCodeAnsatz] device memory before step 0: live 0.00 GiB, peak 0.00 GiB (XLA_PYTHON_CLIENT_PREALLOCATE=false)
+step 0: energy: [-0.37793588 -1.07128924 -0.19862702 -1.18717677  0.2016768 ] | gradient norm: [2.85209708 3.50514272 2.02034403 3.4772953  2.21681304]
+step 10: energy: [-3.07364162 -3.95865499 -2.19742433 -3.86367344 -1.66216038] | gradient norm: [2.81869983 2.62736181 2.48195159 2.5160977  2.06372082]
+step 20: energy: [-5.66634579 -5.91445591 -4.07262728 -5.70059559 -3.51533787] | gradient norm: [3.00580709 2.61010812 3.07840747 2.4920885  2.52148456]
+step 30: energy: [-7.3597644  -7.4564853  -5.65381952 -7.07766167 -5.32759682] | gradient norm: [2.48133322 1.94310443 2.93630852 1.95226314 2.36195536]
+step 40: energy: [-8.29939612 -8.46196836 -6.65877934 -7.8621229  -6.80934374] | gradient norm: [1.76574857 1.42062435 2.58828589 1.0523452  2.12661295]
+step 50: energy: [-8.72901893 -9.04842932 -7.33817939 -8.15271902 -7.46533411] | gradient norm: [1.25598344 1.18104263 2.12704139 0.68952265 1.48069217]
+step 60: energy: [-8.94366677 -9.49614486 -7.8069529  -8.32182853 -7.75098429] | gradient norm: [0.83747665 1.01020726 1.6719666  0.54846404 1.11706714]
+step 70: energy: [-9.05799179 -9.81753171 -8.10986086 -8.46349613 -7.95024463] | gradient norm: [0.54493803 0.64383    1.40472624 0.45761175 0.86169528]
+step 80: energy: [-9.15657967 -9.93529689 -8.38734987 -8.5885718  -8.11200768] | gradient norm: [0.47547584 0.37669997 1.25819331 0.44972918 0.78205349]
+step 90: energy: [-9.29635086 -9.97256941 -8.64863441 -8.72258579 -8.30634308] | gradient norm: [0.5593538  0.23353852 1.14635667 0.4501675  0.80253934]
+step 100: energy: [-9.52724614 -9.98854995 -8.84115895 -8.86873837 -8.54096089] | gradient norm: [0.70489538 0.14608141 0.92658492 0.41334471 0.82281295]
+step 110: energy: [-9.81249617 -9.99375574 -8.92681954 -9.00655465 -8.76229385] | gradient norm: [0.61450727 0.09027476 0.71623838 0.37469115 0.74670602]
+step 120: energy: [-9.96639568 -9.9965665  -8.98069269 -9.13466971 -8.91941831] | gradient norm: [0.27493373 0.05649681 0.53655566 0.4200746  0.52917739]
+step 130: energy: [-9.99424996 -9.99812743 -9.01834303 -9.28872849 -8.99149004] | gradient norm: [0.20886814 0.04335107 0.39596263 0.54823358 0.30016394]
+step 140: energy: [-10.00644097  -9.99942408  -9.05255755  -9.52720719  -9.01456279] | gradient norm: [0.17559902 0.03365692 0.30739405 0.70895158 0.16732026]
+step 150: energy: [-10.02200663 -10.0004881   -9.10231231  -9.84723555  -9.02757677] | gradient norm: [0.12812695 0.02861121 0.28586932 0.7037621  0.13366195]
+step 160: energy: [-10.03836177 -10.00145059  -9.19879056 -10.10063797  -9.04660727] | gradient norm: [0.13776203 0.02762123 0.35672062 0.55634719 0.15162435]
+step 170: energy: [-10.0622925  -10.00241616  -9.39861747 -10.36794     -9.08020308] | gradient norm: [0.17261956 0.02749436 0.47990296 0.67862239 0.21181395]
+step 180: energy: [-10.10631833 -10.00344836  -9.69654831 -10.75193943  -9.14911401] | gradient norm: [0.24919544 0.02820646 0.4680088  0.67583504 0.32546391]
+step 190: energy: [-10.20636556 -10.00460507  -9.88122747 -10.94019768  -9.30764623] | gradient norm: [0.40829945 0.02979802 0.32594358 0.25424717 0.52769329]
+step 200: energy: [-10.46648497 -10.00596423  -9.95694618 -10.95228457  -9.64337029] | gradient norm: [0.67820461 0.03224211 0.22363111 0.30362137 0.66261949]
+step 210: energy: [-10.86731981 -10.00763282  -9.99251806 -10.97813364  -9.92794983] | gradient norm: [0.6190018  0.03571782 0.09990782 0.15636705 0.39948254]
+step 220: energy: [-10.95150793 -10.00977364  -9.99768339 -10.98617347  -9.97600972] | gradient norm: [0.41195006 0.04060927 0.05478753 0.09844377 0.25307137]
+step 230: energy: [-10.97927955 -10.01264966  -9.99816156 -10.99100662  -9.98628648] | gradient norm: [0.29302987 0.04740491 0.03883072 0.06806966 0.17339634]
+step 240: energy: [-10.99512446 -10.01671545  -9.99870381 -10.99357254  -9.99318732] | gradient norm: [0.12071996 0.05714667 0.03040668 0.04757612 0.10318899]
+step 250: energy: [-10.9971422  -10.0228227   -9.99920511 -10.9953132   -9.9966106 ] | gradient norm: [0.0939009  0.07173144 0.01680717 0.03121178 0.06883656]
+step 260: energy: [-10.99859474 -10.03273992  -9.99943521 -10.99632784  -9.9981974 ] | gradient norm: [0.05236263 0.0950679  0.01113547 0.02650058 0.02993292]
+step 270: energy: [-10.99914123 -10.05062224  -9.99952219 -10.9970709   -9.99866442] | gradient norm: [0.02714608 0.136063   0.01483293 0.01925979 0.02352972]
+step 280: energy: [-10.99927898 -10.08775778  -9.99957875 -10.99757811  -9.99909285] | gradient norm: [0.02324407 0.21618734 0.01528975 0.01622044 0.02008354]
+step 290: energy: [-10.99946202 -10.17832906  -9.99964036 -10.99795634  -9.99936295] | gradient norm: [0.01063043 0.38259789 0.02757985 0.01358702 0.02137608]
+step 300: energy: [-10.99953215 -10.40308039  -9.99967553 -10.99824037  -9.99952027] | gradient norm: [0.01045227 0.63218864 0.03501016 0.01164814 0.01783239]
+step 310: energy: [-10.99960058 -10.70970047  -9.99970487 -10.99845951  -9.99964501] | gradient norm: [0.00682944 0.61706084 0.0184531  0.0101392  0.01805291]
+step 320: energy: [-10.9996478  -10.88341464  -9.9997475  -10.99863207  -9.99973659] | gradient norm: [0.00612348 0.45727463 0.02523386 0.00896696 0.01418707]
+step 330: energy: [-10.99968733 -10.96816539  -9.99976146 -10.99877039  -9.99978493] | gradient norm: [0.00511767 0.24377729 0.01936717 0.00805094 0.02421524]
+step 340: energy: [-10.99972017 -10.99206971  -9.99979887 -10.99888316  -9.99983701] | gradient norm: [0.00477063 0.07841545 0.01671733 0.00728859 0.01665825]
+step 350: energy: [-10.99974824 -10.99556755  -9.9998098  -10.99897654  -9.99987183] | gradient norm: [0.00423204 0.06271126 0.01938528 0.00668    0.0113317 ]
+step 360: energy: [-10.99977273 -10.99674288  -9.99983569 -10.99905502  -9.9999036 ] | gradient norm: [0.00404968 0.05248567 0.09052922 0.0061616  0.01966502]
+step 370: energy: [-10.99979406 -10.99764775  -9.99983108 -10.99912191  -9.99991704] | gradient norm: [0.00377459 0.03280845 0.02530831 0.00571423 0.01390598]
+step 380: energy: [-10.99981298 -10.99821126  -9.99985021 -10.99917962  -9.99992864] | gradient norm: [0.00354306 0.01571318 0.02362184 0.00536466 0.01875289]
+step 390: energy: [-10.99982988 -10.99847831  -9.99987024 -10.99923004  -9.9999341 ] | gradient norm: [0.00344646 0.0103248  0.01751952 0.00502991 0.01589591]
+step 400: energy: [-10.99984489 -10.99864434  -9.99987978 -10.99927456  -9.99993082] | gradient norm: [0.0032232  0.00958429 0.01903559 0.00475169 0.02594846]
+step 410: energy: [-10.99985851 -10.99878693  -9.99989507 -10.99931423  -9.99994433] | gradient norm: [0.00293446 0.0080153  0.0189813  0.00456743 0.01781512]
+step 420: energy: [-10.99987072 -10.99890995  -9.99990723 -10.99934993  -9.99996197] | gradient norm: [0.00301054 0.00686722 0.01606396 0.00429723 0.0113496 ]
+step 430: energy: [-10.99988167 -10.99901376  -9.9999139  -10.99938229  -9.9999627 ] | gradient norm: [0.00276784 0.00617303 0.01532761 0.00410017 0.01264842]
+step 440: energy: [-10.99989184 -10.99910307  -9.9999107  -10.99941181  -9.99996403] | gradient norm: [0.00244936 0.005714   0.0314139  0.00394117 0.01781941]
+step 450: energy: [-10.9999009  -10.9991812   -9.99991527 -10.99943893  -9.99997414] | gradient norm: [0.00259931 0.00532743 0.02297419 0.0037606  0.01023699]
+step 460: energy: [-10.99990908 -10.99925013  -9.99991223 -10.99946393  -9.99997546] | gradient norm: [0.00237095 0.00498031 0.02324848 0.00360723 0.01018629]
+step 470: energy: [-10.99991679 -10.99931126  -9.99993984 -10.99948708  -9.99997572] | gradient norm: [0.00204801 0.00466539 0.01609992 0.00351585 0.01323447]
+step 480: energy: [-10.99992364 -10.99936576  -9.99993587 -10.99950864  -9.99997598] | gradient norm: [0.00214796 0.0043857  0.02834323 0.00335683 0.01356451]
+step 490: energy: [-10.99992986 -10.99941458  -9.99994673 -10.99952877  -9.9999743 ] | gradient norm: [0.00198571 0.00413448 0.02775209 0.00328485 0.01746122]
+step 500: energy: [-10.9999357  -10.99945849  -9.99995002 -10.99954759  -9.99998074] | gradient norm: [0.00172743 0.0039058  0.02153005 0.00314578 0.01611375]
+step 510: energy: [-10.99994093 -10.99949814  -9.99995114 -10.99956528  -9.99998257] | gradient norm: [0.00177198 0.00369574 0.01647084 0.00307977 0.01730114]
+step 520: energy: [-10.99994572 -10.99953405  -9.99995904 -10.9995819   -9.99997798] | gradient norm: [0.00163613 0.0035017  0.01457902 0.00295104 0.01403451]
+step 530: energy: [-10.99995016 -10.99956668  -9.99996491 -10.99959758  -9.99998036] | gradient norm: [0.00147455 0.00332296 0.01333203 0.00289646 0.01065703]
+step 540: energy: [-10.99995415 -10.9995964   -9.99993143 -10.99961237  -9.99997299] | gradient norm: [0.00149131 0.00315706 0.02676231 0.00275501 0.0153662 ]
+step 550: energy: [-10.99995787 -10.99962355  -9.9999416  -10.99962634  -9.99998133] | gradient norm: [0.00133862 0.00300292 0.02336951 0.00272659 0.01327825]
+step 560: energy: [-10.99996123 -10.9996484   -9.99995287 -10.99963958  -9.9999811 ] | gradient norm: [0.00132903 0.00285941 0.02113291 0.0025806  0.01309375]
+step 570: energy: [-10.9999643  -10.99967119  -9.99995436 -10.99965213  -9.99998643] | gradient norm: [0.00124743 0.00272553 0.02578299 0.00254684 0.01044086]
+step 580: energy: [-10.99996715 -10.99969213  -9.9999617  -10.99966405  -9.99998455] | gradient norm: [0.00113824 0.00260021 0.02175412 0.00243235 0.01137049]
+step 590: energy: [-10.99996973 -10.9997114   -9.99997825 -10.99967536  -9.99998025] | gradient norm: [0.00110261 0.00248278 0.01290009 0.00245692 0.01456399]
+step 600: energy: [-10.99997209 -10.99972917  -9.99996526 -10.99968612  -9.99998163] | gradient norm: [0.00101369 0.00237249 0.02147298 0.0023328  0.01273293]
+step 610: energy: [-10.99997425 -10.99974558  -9.99997201 -10.99969635  -9.99998561] | gradient norm: [0.00094002 0.00226875 0.01644482 0.00230402 0.01348514]
+step 620: energy: [-10.99997622 -10.99976075  -9.99994427 -10.99970613  -9.99998365] | gradient norm: [0.00091549 0.00217101 0.02334288 0.00222254 0.01971421]
+step 630: energy: [-10.99997803 -10.99977479  -9.99996188 -10.99971543  -9.99998304] | gradient norm: [0.00083904 0.0020788  0.02663555 0.00212306 0.02048557]
+step 640: energy: [-10.99997967 -10.99978781  -9.99994906 -10.99972432  -9.99998249] | gradient norm: [0.0008454  0.00199169 0.02565743 0.00210508 0.01301109]
+step 650: energy: [-10.99998117 -10.99979988  -9.99998176 -10.99973281  -9.99998778] | gradient norm: [0.00075769 0.0019093  0.01686804 0.00199886 0.01709764]
+step 660: energy: [-10.99998254 -10.9998111   -9.99995507 -10.99974092  -9.9999825 ] | gradient norm: [0.00070855 0.0018313  0.026547   0.00200002 0.0132175 ]
+step 670: energy: [-10.99998379 -10.99982153  -9.99996581 -10.99974869  -9.99997246] | gradient norm: [0.00068003 0.00175736 0.02232238 0.00188814 0.01640587]
+step 680: energy: [-10.99998492 -10.99983123  -9.99997637 -10.99975611  -9.99998027] | gradient norm: [0.00063362 0.00168723 0.01721542 0.00190788 0.01524145]
+step 690: energy: [-10.99998595 -10.99984027  -9.99997241 -10.99976323  -9.99998165] | gradient norm: [0.00064391 0.00162064 0.02059268 0.00185523 0.0161826 ]
+step 700: energy: [-10.9999869  -10.99984869  -9.99991703 -10.99977004  -9.99998819] | gradient norm: [0.00057535 0.00155737 0.02899033 0.00176116 0.01215144]
+step 710: energy: [-10.99998776 -10.99985655  -9.99997956 -10.99977659  -9.99998498] | gradient norm: [0.00054136 0.00149721 0.01396781 0.00176638 0.01209059]
+step 720: energy: [-10.99998854 -10.99986389  -9.99991368 -10.99978287  -9.99998657] | gradient norm: [0.00053483 0.00143997 0.0466609  0.00166924 0.01825467]
+step 730: energy: [-10.99998925 -10.99987075  -9.99995199 -10.9997889   -9.99997993] | gradient norm: [0.00048457 0.00138549 0.02558675 0.00170746 0.01331483]
+step 740: energy: [-10.99998989 -10.99987717  -9.99997465 -10.99979469  -9.99998433] | gradient norm: [0.00045677 0.0013336  0.01722317 0.00162487 0.016389  ]
+step 750: energy: [-10.99999048 -10.99988317  -9.99998959 -10.99980025  -9.9999826 ] | gradient norm: [0.00042932 0.00128416 0.01601387 0.00158356 0.01329942]
+step 760: energy: [-10.99999101 -10.99988879  -9.99998364 -10.99980561  -9.99998776] | gradient norm: [0.00040722 0.00123703 0.01602016 0.00161437 0.01226564]
+step 770: energy: [-10.9999915  -10.99989405  -9.99996664 -10.99981076  -9.99997686] | gradient norm: [0.00038648 0.0011921  0.02174723 0.001505   0.0150559 ]
+step 780: energy: [-10.99999194 -10.99989899  -9.99996631 -10.99981573  -9.99995015] | gradient norm: [0.00038876 0.00114924 0.02269235 0.00206996 0.0314304 ]
+step 790: energy: [-10.99999234 -10.99990363  -9.99997896 -10.99982049  -9.99998114] | gradient norm: [0.00036352 0.00110836 0.01697317 0.00155342 0.02350859]
+step 800: energy: [-10.99999271 -10.99990798  -9.99997672 -10.9998251   -9.99998414] | gradient norm: [0.00033626 0.00106934 0.01972383 0.00142553 0.01371141]
+step 810: energy: [-10.99999305 -10.99991208  -9.99997367 -10.99982955  -9.99996863] | gradient norm: [0.00033457 0.00103209 0.0224093  0.00141671 0.01751617]
+step 820: energy: [-10.99999332 -10.99991593  -9.99993969 -10.99983383  -9.99998498] | gradient norm: [0.00078444 0.00099654 0.0316665  0.00136774 0.01030058]
+step 830: energy: [-10.99999363 -10.99991955  -9.9999744  -10.99983796  -9.9999846 ] | gradient norm: [0.00044801 0.00096259 0.01969772 0.00137131 0.01248935]
+step 840: energy: [-10.99999389 -10.99992296  -9.99994632 -10.99984195  -9.99993697] | gradient norm: [0.00033561 0.00093017 0.02866849 0.0013417  0.03847335]
+step 850: energy: [-10.99999412 -10.99992618  -9.99996274 -10.9998458   -9.99997378] | gradient norm: [0.00028311 0.0008992  0.03280173 0.00127096 0.0188783 ]
+step 860: energy: [-10.99999434 -10.99992921  -9.99997171 -10.99984953  -9.99997916] | gradient norm: [0.00025872 0.00086962 0.01859884 0.00127707 0.01862337]
+step 870: energy: [-10.99999454 -10.99993208  -9.99997044 -10.99985313  -9.99997271] | gradient norm: [0.00029515 0.00084136 0.01897871 0.00123504 0.02373538]
+step 880: energy: [-10.99999472 -10.99993479  -9.99998393 -10.9998566   -9.99996142] | gradient norm: [0.00025488 0.00081435 0.01682878 0.00121261 0.02307252]
+step 890: energy: [-10.99999489 -10.99993735  -9.99996465 -10.99985997  -9.9999685 ] | gradient norm: [0.00024521 0.00078853 0.01964407 0.00123675 0.02141804]
+step 900: energy: [-10.99999505 -10.99993977  -9.99995628 -10.99986323  -9.99996665] | gradient norm: [0.00022915 0.00076386 0.02195261 0.00113815 0.01812463]
+step 910: energy: [-10.9999952  -10.99994207  -9.99997489 -10.99986638  -9.99997156] | gradient norm: [0.0002322  0.00074027 0.0208679  0.0011767  0.01525115]
+step 920: energy: [-10.99999533 -10.99994424  -9.9999629  -10.99986942  -9.99997077] | gradient norm: [0.00021463 0.00071772 0.02204885 0.00119423 0.01747226]
+step 930: energy: [-10.99999546 -10.99994631  -9.9999752  -10.99987238  -9.99998882] | gradient norm: [0.00022118 0.0006962  0.02068063 0.00111852 0.01279774]
+step 940: energy: [-10.99999558 -10.99994827  -9.99995802 -10.99987525  -9.99997873] | gradient norm: [0.00024136 0.00067553 0.02926595 0.00114625 0.01301059]
+step 950: energy: [-10.99999569 -10.99995013  -9.99997905 -10.99987803  -9.99998431] | gradient norm: [0.00021992 0.00065626 0.02158529 0.00109586 0.01671687]
+step 960: energy: [-10.99999579 -10.9999519   -9.9999858  -10.99988071  -9.99998618] | gradient norm: [0.00019601 0.0006676  0.01833301 0.00106329 0.0121258 ]
+step 970: energy: [-10.99999589 -10.99995359  -9.99998339 -10.99988333  -9.99999083] | gradient norm: [0.00017714 0.00070805 0.02627393 0.00110705 0.01217671]
+step 980: energy: [-10.99999599 -10.99995519  -9.99994239 -10.99988586  -9.99998973] | gradient norm: [0.0001846  0.00067843 0.0311364  0.00107288 0.01651141]
+step 990: energy: [-10.99999608 -10.99995671  -9.99998022 -10.99988832  -9.99995988] | gradient norm: [0.0011244  0.00071944 0.01713643 0.00103126 0.02360663]
+step 1000: energy: [-10.99999616 -10.99995816  -9.99998315 -10.9998907   -9.99993836] | gradient norm: [0.00029207 0.00076265 0.01837712 0.00101601 0.03905541]
+step 1010: energy: [-10.99999624 -10.99995954  -9.99992742 -10.99989301  -9.99997928] | gradient norm: [0.00022839 0.00076297 0.03531228 0.00102942 0.02304131]
+step 1020: energy: [-10.99999632 -10.9999609   -9.99996134 -10.99989524  -9.99997211] | gradient norm: [0.00021227 0.00074593 0.02425453 0.00103776 0.01802776]
+step 1030: energy: [-10.9999964  -10.99996219  -9.9999854  -10.99989744  -9.99998026] | gradient norm: [0.00018025 0.00062438 0.01839464 0.00096207 0.02450636]
+step 1040: energy: [-10.99999647 -10.99996341  -9.99994772 -10.99989954  -9.99998078] | gradient norm: [0.00021722 0.00072719 0.03894541 0.00102163 0.02936746]
+step 1050: energy: [-10.99999653 -10.99996455  -9.99997069 -10.99990161  -9.99998643] | gradient norm: [0.00071154 0.00076467 0.0213779  0.00093899 0.01764427]
+step 1060: energy: [-10.9999966  -10.99996564  -9.99995565 -10.99990363  -9.99998893] | gradient norm: [0.00023103 0.00088776 0.02354762 0.0009487  0.01318082]
+step 1070: energy: [-10.99999666 -10.99996674  -9.99997235 -10.99990559  -9.99997659] | gradient norm: [0.00018402 0.00080916 0.03080384 0.00096546 0.0168933 ]
+step 1080: energy: [-10.99999672 -10.9999678   -9.99997323 -10.9999075   -9.99998079] | gradient norm: [0.00022963 0.00067657 0.02104827 0.00091659 0.018927  ]
+step 1090: energy: [-10.99999669 -10.9999688   -9.99998876 -10.99990935  -9.99996727] | gradient norm: [0.0009045  0.00076598 0.02727101 0.00092004 0.0256383 ]
+step 1100: energy: [-10.99999682 -10.99996971  -9.99997874 -10.99991115  -9.99998146] | gradient norm: [0.00056416 0.00079743 0.01789467 0.00093353 0.01805449]
+step 1110: energy: [-10.99999688 -10.9999706   -9.99996887 -10.99991291  -9.99998313] | gradient norm: [0.00043578 0.0009305  0.02033427 0.0009671  0.01495576]
+step 1120: energy: [-10.99999695 -10.99997153  -9.99997558 -10.99991461  -9.99999103] | gradient norm: [0.00021836 0.00082506 0.01815614 0.00085912 0.01498769]
+step 1130: energy: [-10.999997   -10.99997241  -9.99998694 -10.99991628  -9.99997673] | gradient norm: [0.00030889 0.00060611 0.01548015 0.00091972 0.02215716]
+step 1140: energy: [-10.99999705 -10.9999732   -9.99997819 -10.99991789  -9.9999779 ] | gradient norm: [0.00027329 0.00081449 0.02770966 0.00093769 0.01985171]
+step 1150: energy: [-10.9999971  -10.99997394  -9.99998225 -10.99991946  -9.9999689 ] | gradient norm: [0.00081716 0.00096292 0.01579847 0.00085409 0.02218801]
+step 1160: energy: [-10.99999715          nan  -9.99993391 -10.99992101  -9.99998013] | gradient norm: [0.00033465        nan 0.03258554 0.00095863 0.01608752]
+step 1170: energy: [-10.99999718          nan  -9.99993813 -10.99992251  -9.99998912] | gradient norm: [0.00048438        nan 0.03090799 0.00093046 0.02480082]
+step 1180: energy: [-10.99999724          nan  -9.99987793 -10.99992397  -9.99999071] | gradient norm: [0.00039773        nan 0.0299003  0.00082693 0.0161404 ]
+step 1190: energy: [-10.99999728          nan  -9.99997281 -10.99992539  -9.99997877] | gradient norm: [0.0002987         nan 0.03049525 0.00090346 0.01914711]
+step 1200: energy: [         nan          nan  -9.99998115 -10.9999268   -9.99999164] | gradient norm: [       nan        nan 0.01507926 0.00085516 0.01850309]
+step 1210: energy: [         nan          nan  -9.99998785 -10.99992814  -9.99995181] | gradient norm: [       nan        nan 0.01338343 0.00090631 0.02336668]
+step 1220: energy: [         nan          nan  -9.99997858 -10.99992947  -9.99999554] | gradient norm: [       nan        nan 0.01897858 0.00089777 0.01187746]
+step 1230: energy: [        nan         nan -9.9999574          nan -9.99999163] | gradient norm: [       nan        nan 0.02361382        nan 0.01565687]
+step 1240: energy: [        nan         nan -9.99998163         nan -9.9999683 ] | gradient norm: [       nan        nan 0.01736018        nan 0.02478255]
+step 1250: energy: [        nan         nan -9.99998532         nan -9.99998141] | gradient norm: [       nan        nan 0.01599019        nan 0.02203146]
+step 1260: energy: [        nan         nan -9.99997272         nan -9.99998222] | gradient norm: [       nan        nan 0.02175119        nan 0.01815473]
+step 1270: energy: [        nan         nan -9.99995456         nan -9.99999342] | gradient norm: [       nan        nan 0.03281201        nan 0.01747139]
+step 1280: energy: [        nan         nan -9.99998346         nan -9.99999139] | gradient norm: [       nan        nan 0.02911766        nan 0.01427078]
+step 1290: energy: [        nan         nan -9.99992572         nan -9.9999941 ] | gradient norm: [       nan        nan 0.02588199        nan 0.05446643]
+step 1300: energy: [        nan         nan -9.99994814         nan -9.99997171] | gradient norm: [       nan        nan 0.02721598        nan 0.02199234]
+step 1310: energy: [        nan         nan -9.99994394         nan -9.99999948] | gradient norm: [       nan        nan 0.03103466        nan 0.01558195]
+step 1320: energy: [         nan          nan  -9.99996406          nan -10.00000365] | gradient norm: [       nan        nan 0.02655692        nan 0.01386089]
+step 1330: energy: [        nan         nan -9.99996532         nan         nan] | gradient norm: [      nan       nan 0.0518879       nan       nan]
+step 1340: energy: [        nan         nan -9.99995852         nan         nan] | gradient norm: [       nan        nan 0.02553266        nan        nan]
+step 1350: energy: [        nan         nan -9.99998167         nan         nan] | gradient norm: [       nan        nan 0.02032068        nan        nan]
+step 1360: energy: [        nan         nan -9.99996072         nan         nan] | gradient norm: [       nan        nan 0.02672895        nan        nan]
+step 1370: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1380: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1390: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1400: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1410: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1420: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1430: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1440: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1450: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1460: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1470: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1480: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1490: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1500: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1510: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1520: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1530: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1540: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1550: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1560: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1570: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1580: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1590: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1600: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1610: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1620: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1630: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1640: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1650: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1660: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1670: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1680: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1690: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1700: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1710: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1720: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1730: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1740: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1750: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1760: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1770: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1780: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1790: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1800: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1810: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1820: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1830: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1840: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1850: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1860: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1870: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1880: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1890: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1900: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1910: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1920: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1930: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1940: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1950: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1960: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1970: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1980: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+step 1990: energy: [nan nan nan nan nan] | gradient norm: [nan nan nan nan nan]
+[ToricCodeAnsatz] 840/2000 steps (42.0%) had at least one non-finite trial, which optimize() silently freezes.
+[ToricCodeAnsatz] peak memory: GPU 0.51 GiB (live at exit 0.00 GiB), host RSS 1.77 GiB
+Results saved to master file: ./results/toriccode.h5
+Individual run saved to: ./tmp/toriccode_20261110_193237_3709838_8189.h5
+Copied per-run HDF5 to: experiments/experiment_1_scaling_system_size/4x2/enumerated/run.h5
+Wrote run config to: experiments/experiment_1_scaling_system_size/4x2/enumerated/run_config.json
+Saved plot to: experiments/experiment_1_scaling_system_size/4x2/enumerated/plots/4x2_nlayers_2_resets_True.png
+all_grads shape for h=0: (5, 200, 193)
+gradient_norms shape for h=0: (5, 200)
+gradient_norms min/max for h=0: 0.00017714187285994442, 3.505142716251971
+Saved gradient-norm plot to: experiments/experiment_1_scaling_system_size/4x2/enumerated/plots/gradient_norm_h_0_all_trials.png
+reset_layers input: [1]
+reset_layers used: [1]
+n_reset_thetas: 1
+theta parameter indices: [np.int64(162)]
+abs(theta_history) shape: (5, 200, 1)
+abs(theta_history) min/max: 3.2000964970871084e-31, 1.1859395115630682
+Saved plot to: experiments/experiment_1_scaling_system_size/4x2/enumerated/plots/reset_abs_theta_1_all_trials.png
+h=0: 0/5 trials (0.0%) within 0.1% of reference energy density (-1.1)
+Saved final energies plot to: experiments/experiment_1_scaling_system_size/4x2/enumerated/plots/final_energies_h_0_by_trial.png
+End time:   Tue 10 Nov 19:32:40 GMT 2026
+Run time:   00:10:58 (658 s)
+Job finished with exit code: 0
