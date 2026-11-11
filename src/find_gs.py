@@ -352,9 +352,28 @@ class VariationalAnsatz(abc.ABC):
         notation the two entries are ``p^(i) E^(i)`` and ``p^(i)``, so the
         branch energy is ``nums / dens`` wherever ``dens > 0``.
         enumerated_energy_from_params is ``sum(nums) / sum(dens)``.
+
+        COIN WEIGHT OUTSIDE THE AMPLITUDES
+        Each branch is built with the parameter-free Kraus operators k^(ab)
+        (coin_in_amplitude=False), so its norm^2 is the Born factor q^(b|a)
+        only, and the coin weight p^(a) = prod_r c_r^2 or s_r^2 multiplies the
+        two scalars afterwards. That is the "statevector route"
+        E = sum_i p^(a) <psi~^(i)|H|psi~^(i)> and is algebraically identical to
+        putting c and s into the amplitudes (they are scalars on each Kraus
+        operator).
+
+        Numerically it is not identical. Once training switches the resets off
+        it drives theta to ~1e-20..1e-40, and with the coin in the amplitudes a
+        branch where all R resets fire carries s^R ~ theta^R in every MPS
+        tensor, i.e. norm^2 ~ theta^(2R) ~ 1e-300 -- subnormal doubles that the
+        GPU kernels mishandle, producing NaN forward energies (all four
+        Experiment 1 enumerated runs died this way on A40s; the same parameters
+        were finite on CPU). With the coin factored out the tensors never get
+        small; p^(a) underflows harmlessly to 0 as a scalar.
         """
         def one_branch(branch):
-            qc = self._circuit_branch(params, branch)
+            qc = self._circuit_branch(params, branch, coin_in_amplitude=False)
+            weight = self._branch_coin_weight(params, branch)
             # MPSCircuit.expectation defaults to normalize=False, so
             # _energy_of_circuit already returns the unnormalised <phi|H|phi>.
             # <phi|phi> read straight off the orthogonality centre. NOT
@@ -368,7 +387,7 @@ class VariationalAnsatz(abc.ABC):
             # that stays finite (and correctly zero) on a dead branch.
             centre = qc._mps.tensors[qc._mps.center_position]
             den = K.real(K.sum(centre * K.conj(centre)))
-            return self._energy_of_circuit(qc), den
+            return weight * self._energy_of_circuit(qc), weight * den
 
         branches = self._reset_branches
         chunk = getattr(self, "branch_chunk_size", None)

@@ -473,8 +473,13 @@ def _sampled_reset(qc, k, theta, u, force=None):
     return log_w
 
 
-def _branch_reset_matrix(theta, onehot3):
+def _branch_reset_matrix(theta, onehot3, coin_in_amplitude=True):
     """2x2 matrix of ONE unnormalised Kraus branch of the reset channel.
+
+    coin_in_amplitude=False drops the cos(theta/2) / sin(theta/2) coin factors
+    and returns the parameter-free Kraus operator k^(ab) (I, |0><0| or |0><1|).
+    The caller then supplies the coin weight p^(a) as a classical scalar -- see
+    VariationalAnsatz.trajectory_table for why that matters numerically.
 
     The reset channel ``rho -> (1-p) rho + p (reset-to-|0>)(rho)`` with
     ``p = sin^2(theta/2)`` has exactly three Kraus operators:
@@ -503,8 +508,11 @@ def _branch_reset_matrix(theta, onehot3):
     object. Adding the branch energies with their Born weights reproduces the
     channel; adding the branch amplitudes does not.
     """
-    c = K.cos(theta / 2.0)
-    s = K.sin(theta / 2.0)
+    if coin_in_amplitude:
+        c = K.cos(theta / 2.0)
+        s = K.sin(theta / 2.0)
+    else:
+        c = s = 1.0 + 0.0 * theta     # ones, keeping theta's dtype and backend
     h0, h1, h2 = onehot3[0], onehot3[1], onehot3[2]
     zero = 0.0 * c                  # zeros_like without assuming a backend method
     m = K.stack([K.stack([c * h0 + s * h1, s * h2]),
@@ -512,7 +520,7 @@ def _branch_reset_matrix(theta, onehot3):
     return K.cast(m, tc.dtypestr)
 
 
-def _branch_reset(qc, k, theta, branch_idx):
+def _branch_reset(qc, k, theta, branch_idx, coin_in_amplitude=True):
     """Apply one unnormalised Kraus branch of the reset at chain site k. Mutates qc.
 
     Unlike _sampled_reset this computes no Born probabilities and performs no
@@ -532,6 +540,8 @@ def _branch_reset(qc, k, theta, branch_idx):
         theta: reset angle; p = sin^2(theta/2).
         branch_idx: scalar in {0, 1, 2}. May be a traced array, so that the
             enumeration over branches can be vmapped.
+        coin_in_amplitude: False applies the parameter-free k^(ab) instead, so
+            the branch norm is q^(b|a) and the coin weight is left to the caller.
     """
     # position(k) first for the same reason as _sampled_reset: a single-site
     # operator applied at the orthogonality centre is the standard TEBD update,
@@ -541,7 +551,7 @@ def _branch_reset(qc, k, theta, branch_idx):
     T = qc._mps.tensors[k]                                    # (Dl, 2, Dr)
     onehot3 = K.cast(K.onehot(K.cast(branch_idx, "int32"), 3), tc.rdtypestr)
     qc._mps.tensors[k] = K.einsum("ab,ibj->iaj",
-                                  _branch_reset_matrix(theta, onehot3), T)
+                                  _branch_reset_matrix(theta, onehot3, coin_in_amplitude), T)
 
 
 def construct_branch_circuit_toriccodelattice_prob_resets(params, nlayers, nparams,
@@ -550,7 +560,8 @@ def construct_branch_circuit_toriccodelattice_prob_resets(params, nlayers, npara
                                                           active_reset_layers,
                                                           sys_mps_positions, branch,
                                                           split_conf=None,
-                                                          cartan_mode="fused"):
+                                                          cartan_mode="fused",
+                                                          coin_in_amplitude=True):
     """Build ONE unnormalised Kraus branch of the reset-channel circuit.
 
     Same parameter layout and consumption order as the trajectory and purified
@@ -568,6 +579,10 @@ def construct_branch_circuit_toriccodelattice_prob_resets(params, nlayers, npara
         branch: one branch index in {0, 1, 2} per reset event, in
             circuit-application order (indexable by the same reset_idx as
             mps_reset_qubits). May be a traced array of shape (total_resets,).
+        coin_in_amplitude: True (default) puts the coin factors c / s into the
+            amplitudes, so the branch norm^2 is the full p^(i). False builds
+            the coin-free branch (norm^2 = q^(b|a)); the caller multiplies by
+            p^(a). Training uses False -- see VariationalAnsatz.trajectory_table.
     """
     if split_conf is None:
         split_conf = make_split_conf()
@@ -586,7 +601,7 @@ def construct_branch_circuit_toriccodelattice_prob_resets(params, nlayers, npara
         if l in active_reset_layers:
             for _ in range(nresets_per_layer):
                 _branch_reset(qc, mps_reset_qubits[reset_idx],
-                              params[paramindex], branch[reset_idx])
+                              params[paramindex], branch[reset_idx], coin_in_amplitude)
                 paramindex += 1
                 reset_idx += 1
 

@@ -578,13 +578,16 @@ class ToricCodeAnsatz(VariationalAnsatz):
                 cartan_mode=self.cartan_mode,
             )
 
-    def _circuit_branch(self, params, branch):
+    def _circuit_branch(self, params, branch, coin_in_amplitude=True):
         """Build one unnormalised Kraus branch of the reset channel.
 
         ``branch`` holds one index in {0, 1, 2} per reset event and may be a
         traced array, so this is vmappable over the whole branch table. The
-        returned state is deliberately NOT normalised: its norm is the branch
-        probability. See VariationalAnsatz.enumerated_energy_from_params.
+        returned state is deliberately NOT normalised. With
+        coin_in_amplitude=True (default; what the diagnostics read) its norm^2
+        is the full branch probability p^(i). With False the coin factors are
+        left out, its norm^2 is q^(b|a), and the coin weight p^(a) comes from
+        _branch_coin_weight. See VariationalAnsatz.trajectory_table.
         """
         if not self.use_enumerated_resets:
             raise ValueError(
@@ -603,7 +606,22 @@ class ToricCodeAnsatz(VariationalAnsatz):
             branch=branch,
             split_conf=self.split_conf,
             cartan_mode=self.cartan_mode,
+            coin_in_amplitude=coin_in_amplitude,
         )
+
+    def _branch_coin_weight(self, params, branch):
+        """Classical coin weight p^(a) of one branch, as a plain scalar.
+
+        p^(a) = prod_r (cos^2(theta_r/2) if branch_r == 0 else sin^2(theta_r/2)),
+        over reset events r in circuit order -- the same order _builder_reset_indices
+        and the branch table use. Written as a direct product, not exp(sum log):
+        log(sin^2) is -inf at theta = 0 and its gradient would be NaN, whereas a
+        product that underflows is just 0 with a 0 gradient.
+        """
+        thetas = self._expand_params(params)[self._builder_reset_indices()]
+        c2 = jnp.cos(thetas / 2.0) ** 2
+        s2 = jnp.sin(thetas / 2.0) ** 2
+        return jnp.prod(jnp.where(jnp.asarray(branch) == 0, c2, s2))
 
     def _circuit_traj(self, params, status, force=None):
         """Build one sampled trajectory. Returns (qc, log_w).
