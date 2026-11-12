@@ -19,7 +19,7 @@ cd "$REPO"
 
 FORCE=0
 DRY_RUN=0
-TIME=04:00:00
+TIME=02:00:00
 for arg in "$@"; do
   [[ "$arg" == *=* ]] || { echo "error: arguments must be KEY=VALUE, got '$arg'" >&2; exit 1; }
   declare "${arg%%=*}=${arg#*=}"
@@ -49,7 +49,16 @@ for d in "$EXP"/*x*/*/; do
   if squeue -h -u "$USER" -o %j | grep -qx "exp1_an_${lat}_${m}"; then
     echo "skip $d: analysis job already queued or running"; continue
   fi
-  CMD=(./submit_diag.sh NAME="exp1_an_${lat}_${m}" TIME="$TIME" --
-       python -m src.experiments.exp1_analyse_run "$d")
+  # Purified/enumerated (logged energy is already exact) and failed runs
+  # (status only) need no GPU and take seconds: run them here. Only the MC
+  # methods re-evaluate every saved parameter vector over all 3^R branches, and
+  # timing is irrelevant there, so they go to ANY free GPU, not just A40s.
+  if [ "$m" = purified ] || [ "$m" = enumerated ] || \
+     ! grep -q "Job finished with exit code: 0" "$d/stdout.out"; then
+    CMD=(python -m src.experiments.exp1_analyse_run "$d")
+  else
+    CMD=(./submit_diag.sh NAME="exp1_an_${lat}_${m}" TIME="$TIME" GRES=gpu:1 --
+         python -m src.experiments.exp1_analyse_run "$d")
+  fi
   if [ "$DRY_RUN" = 1 ]; then echo "${CMD[*]}"; else "${CMD[@]}"; fi
 done
