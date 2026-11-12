@@ -1,0 +1,107 @@
+{
+  "description": "Experiment 1, v1: 2x2-5x2, random-search ordering, 5 trials, 2000 steps, bond_dim 64. See ../PLAN.md.",
+  "fixed": {
+    "nlayers": 2,
+    "reset_layers": [
+      1
+    ],
+    "n_spread_resets": 4,
+    "trials": 5,
+    "seed": 1234,
+    "maxiter": 2000,
+    "howoften_tosave": 10,
+    "h": 0,
+    "learning_rate": 0.01,
+    "use_optimal_ordering": true,
+    "svd_fwd_alg": "qr",
+    "gpu": "A40",
+    "walltime": "48:00:00",
+    "convergence_rel_tol": 0.001
+  },
+  "methods": {
+    "mc_n1": "trajectory, n_trajectories=1",
+    "mc_n8": "trajectory, n_trajectories=8",
+    "purified": "two ancillas per reset",
+    "enumerated": "all 3^4 = 81 trajectories"
+  },
+  "reset_qubits": {
+    "2x2": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "3x2": [
+      0,
+      4,
+      5,
+      6
+    ],
+    "4x2": [
+      6,
+      7,
+      8,
+      9
+    ],
+    "5x2": [
+      8,
+      9,
+      11,
+      12
+    ]
+  },
+  "bond_dim_needed": {
+    "2x2": {
+      "mc_n1": 4,
+      "mc_n8": 4,
+      "enumerated": 4,
+      "purified": 6
+    },
+    "3x2": {
+      "mc_n1": 8,
+      "mc_n8": 8,
+      "enumerated": 8,
+      "purified": 12
+    },
+    "4x2": {
+      "mc_n1": 12,
+      "mc_n8": 12,
+      "enumerated": 12,
+      "purified": 24
+    },
+    "5x2": {
+      "mc_n1": 32,
+      "mc_n8": 32,
+      "enumerated": 32,
+      "purified": 32
+    }
+  },
+  "bond_dim": {
+    "2x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    },
+    "3x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    },
+    "4x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    },
+    "5x2": {
+      "mc_n1": 64,
+      "mc_n8": 64,
+      "purified": 64,
+      "enumerated": 64
+    }
+  },
+  "bond_dim_note": "2x2-5x2 production run at 64 without waiting for the pilots (queue). 64 is >= the exact cap for MC/enumerated at these sizes (4, 8, 32, 64), so those runs are exact. Purified (chain N+8) is checked afterwards with bond_dim_requirement on the production checkpoints; redo if it needs > 64.",
+  "bond_dim_needed_note": "Smallest bond dim with discarded weight <= 1e-5, worst case over random init and 4 points along each of the 4 production runs (<lattice>/bond_dim_requirement.csv). Enumerated uses the trajectory value: its branches are the same circuits and its own measurement only partly finished before walltime."
+}

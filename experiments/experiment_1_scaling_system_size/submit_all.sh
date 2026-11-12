@@ -10,8 +10,13 @@
 #
 # KIND=pilot       -> <lattice>/pilot/<method>, 200 steps, bond dimension 64 (Phase 1)
 # KIND=production  -> <lattice>/<method>, MAXITER steps, bond dimension from
-#                     config.json bond_dim[lattice][method] (Phase 2/4).
-#                     BOND_DIM=... overrides it for every run in this call.
+#                     config.json bond_dim[lattice][method], else
+#                     bond_dim_default[method]. BOND_DIM=... overrides both.
+#                     Walltime from walltime_for() below unless TIME= is given.
+#
+# v2 (2026-11-12): ladder ordering, 10 trials, 3000 steps, per-method caps.
+# The v1 runs (search ordering, 5 trials, 2000 steps, cap 64) are in
+# v1_search_ordering/.
 #
 # Every setting is passed through ./submit.sh, so it travels with the job and
 # later code edits cannot change a queued run's parameters (see run_config.py).
@@ -22,10 +27,10 @@ EXP=experiments/experiment_1_scaling_system_size
 cd "$REPO"
 
 KIND=production
-LATTICES="2x2 3x2 4x2 5x2"
+LATTICES="2x2 3x2 4x2 5x2 6x2 8x2 10x2 14x2 20x2 28x2 40x2"
 METHODS="mc_n1 mc_n8 purified enumerated"
-MAXITER=2000
-TIME=""            # default: 02:00:00 for pilots (short jobs backfill much sooner), 48:00:00 for production
+MAXITER=3000
+TIME=""            # default: 02:00:00 for pilots, walltime_for(lattice, method) for production
 BOND_DIM=""
 DRY_RUN=0
 FORCE=0
@@ -35,7 +40,7 @@ for arg in "$@"; do
 done
 
 # Fixed settings for every run of this experiment (PLAN.md, "Fixed settings").
-TRIALS=5
+TRIALS=10
 SEED=1234
 N_SPREAD_RESETS=4
 RESET_LAYERS="[1]"
@@ -48,7 +53,20 @@ if [ "$KIND" = pilot ]; then
 elif [ "$KIND" != production ]; then
   echo "error: KIND must be pilot or production" >&2; exit 1
 fi
-TIME=${TIME:-48:00:00}
+
+# Walltime per (Lx, method), sized from the v1 step times scaled to 10 trials,
+# 3000 steps and linear-in-length cost, with ~2-3x margin. Short requests
+# backfill much sooner, so these are deliberately not all 48 h.
+walltime_for() {
+  local Lx=$1 m=$2
+  if   [ "$Lx" -le 5 ];  then case $m in purified) echo 04:00:00 ;; *) echo 02:00:00 ;; esac
+  elif [ "$Lx" -le 8 ];  then case $m in purified) echo 08:00:00 ;; enumerated) echo 04:00:00 ;; *) echo 03:00:00 ;; esac
+  elif [ "$Lx" -le 14 ]; then case $m in purified) echo 16:00:00 ;; enumerated) echo 08:00:00 ;; *) echo 06:00:00 ;; esac
+  elif [ "$Lx" -le 20 ]; then case $m in purified) echo 30:00:00 ;; enumerated) echo 16:00:00 ;; *) echo 08:00:00 ;; esac
+  elif [ "$Lx" -le 28 ]; then case $m in purified) echo 48:00:00 ;; enumerated) echo 24:00:00 ;; *) echo 12:00:00 ;; esac
+  else                        case $m in purified) echo 48:00:00 ;; enumerated) echo 36:00:00 ;; *) echo 16:00:00 ;; esac
+  fi
+}
 
 # JAX otherwise caps itself at 75% of the card (36 GB on an A40), so an
 # "out of memory" would mean 36 GB, not the 48 GB the stopping rule is about.
@@ -77,7 +95,7 @@ for lat in $LATTICES; do
         BD=$(python3 -c "
 import json, sys
 c = json.load(open('$EXP/config.json'))
-print(c.get('bond_dim', {}).get('$lat', {}).get('$m', ''))" 2>/dev/null || true)
+print(c.get('bond_dim', {}).get('$lat', {}).get('$m', '') or c.get('bond_dim_default', {}).get('$m', ''))" 2>/dev/null || true)
         if [ -z "$BD" ]; then
           echo "skip $lat/$m: no bond_dim for it in $EXP/config.json (run Phase 1, or pass BOND_DIM=)" >&2
           continue
@@ -85,6 +103,7 @@ print(c.get('bond_dim', {}).get('$lat', {}).get('$m', ''))" 2>/dev/null || true)
       fi
     fi
 
+    if [ "$KIND" = production ]; then RUN_TIME=${TIME:-$(walltime_for "$LX" "$m")}; else RUN_TIME=$TIME; fi
     JOB_NAME="exp1_${KIND:0:4}_${lat}_${m}"
     # Never two jobs in one folder: they would interleave stdout.out, run.h5
     # and checkpoint.npz. Exact name match (-x), not substring -- 2x2 is a
@@ -100,10 +119,10 @@ print(c.get('bond_dim', {}).get('$lat', {}).get('$m', ''))" 2>/dev/null || true)
     fi
 
     CMD=(./submit.sh
-      NAME="$JOB_NAME" TIME="$TIME"
+      NAME="$JOB_NAME" TIME="$RUN_TIME"
       LX="$LX" LY="$LY" TRIALS="$TRIALS" SEED="$SEED" MAXITER="$MAXITER"
       HOWOFTEN_TOSAVE="$HOWOFTEN_TOSAVE" RESET_LAYERS="$RESET_LAYERS"
-      N_SPREAD_RESETS="$N_SPREAD_RESETS" BOND_DIM="$BD" USE_OPTIMAL_ORDERING=true
+      N_SPREAD_RESETS="$N_SPREAD_RESETS" BOND_DIM="$BD" USE_OPTIMAL_ORDERING=true USE_LADDER_ORDERING=true
       "${FLAGS[@]}"
       TRACK_PARAMS=true TRACK_GRADS=true TRACK_BOND_DIM=false
       RUN_DIR="$RUN_DIR" CHECKPOINT="$RUN_DIR/checkpoint.npz")

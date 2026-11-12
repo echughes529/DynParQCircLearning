@@ -1,28 +1,28 @@
 {
-  "description": "Experiment 1: scaling with system size. See PLAN.md.",
+  "description": "Experiment 1, v2: n x 2 ladders, ladder ordering, 10 trials, 3000 steps, per-method caps. See PLAN.md. v1 is in v1_search_ordering/.",
   "fixed": {
     "nlayers": 2,
     "reset_layers": [
       1
     ],
     "n_spread_resets": 4,
-    "trials": 5,
+    "trials": 10,
     "seed": 1234,
-    "maxiter": 2000,
+    "maxiter": 3000,
     "howoften_tosave": 10,
     "h": 0,
     "learning_rate": 0.01,
-    "use_optimal_ordering": true,
+    "use_ladder_ordering": true,
     "svd_fwd_alg": "qr",
     "gpu": "A40",
-    "walltime": "48:00:00",
+    "max_walltime": "48:00:00",
     "convergence_rel_tol": 0.001
   },
   "methods": {
     "mc_n1": "trajectory, n_trajectories=1",
     "mc_n8": "trajectory, n_trajectories=8",
     "purified": "two ancillas per reset",
-    "enumerated": "all 3^4 = 81 trajectories"
+    "enumerated": "all 3^4 = 81 trajectories, coin weight outside amplitudes"
   },
   "reset_qubits": {
     "2x2": [
@@ -48,34 +48,57 @@
       9,
       11,
       12
+    ],
+    "6x2": [
+      10,
+      12,
+      13,
+      15
+    ],
+    "8x2": [
+      14,
+      16,
+      19,
+      21
+    ],
+    "10x2": [
+      18,
+      21,
+      24,
+      27
+    ],
+    "14x2": [
+      26,
+      30,
+      35,
+      39
+    ],
+    "20x2": [
+      38,
+      44,
+      51,
+      57
+    ],
+    "28x2": [
+      54,
+      63,
+      72,
+      81
+    ],
+    "40x2": [
+      78,
+      91,
+      104,
+      117
     ]
   },
-  "bond_dim_needed": {},
-  "bond_dim": {
-    "2x2": {
-      "mc_n1": 64,
-      "mc_n8": 64,
-      "purified": 64,
-      "enumerated": 64
-    },
-    "3x2": {
-      "mc_n1": 64,
-      "mc_n8": 64,
-      "purified": 64,
-      "enumerated": 64
-    },
-    "4x2": {
-      "mc_n1": 64,
-      "mc_n8": 64,
-      "purified": 64,
-      "enumerated": 64
-    },
-    "5x2": {
-      "mc_n1": 64,
-      "mc_n8": 64,
-      "purified": 64,
-      "enumerated": 64
-    }
+  "bond_dim_default": {
+    "mc_n1": 32,
+    "mc_n8": 32,
+    "enumerated": 32,
+    "purified": 48
   },
-  "bond_dim_note": "2x2-5x2 production run at 64 without waiting for the pilots (queue). 64 is >= the exact cap for MC/enumerated at these sizes (4, 8, 32, 64), so those runs are exact. Purified (chain N+8) is checked afterwards with bond_dim_requirement on the production checkpoints; redo if it needs > 64."
+  "bond_dim_default_note": "Option B: ~2x the bond dim needed at random init with the ladder ordering, flat from 10x2 to 20x2 (traj/enum 16, purified 24; ladder_bd_sweep/). Production checkpoints are checked afterwards; any size that needed more than its cap is rerun higher.",
+  "bond_dim": {},
+  "bond_dim_needed": {}
 }

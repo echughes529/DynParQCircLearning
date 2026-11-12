@@ -2,6 +2,8 @@
 
 Status: Phase 0 (tooling + smoke test) done 2026-11-10. Pilots (3709706-21) and production 2x2-5x2 (3709827-42) both queued 2026-11-10. Written 2026-11-10.
 
+> **v2 (2026-11-12):** all lattices rerun with the ladder (column-by-column) ordering, 10 trials, 3000 steps and per-method caps (32 for MC/enumerated, 48 for purified, ~2x the need measured at 10x2 and 20x2), for 2x2-40x2 (2x2, 3x2, 4x2, 5x2, 6x2, 8x2, 10x2, 14x2, 20x2, 28x2, 40x2). The random ordering search stopped beating the natural order beyond ~8x2. Enumerated uses the coin-weight-outside-amplitudes fix. The v1 runs (search ordering, 5 trials, 2000 steps, cap 64, 2x2-5x2) are kept in v1_search_ordering/. Settings: config.json; walltimes: submit_all.sh walltime_for().
+
 > **Deviation (2026-11-10):** the pilot queue was days long, so production for 2x2-5x2 was submitted at bond dimension 64 without waiting for Phase 1. 64 is at or above the exact cap for MC and enumerated at every one of these sizes (4, 8, 32, 64), so those runs are exact. Purified (chain N+8) is checked afterwards with `bond_dim_requirement` on the production checkpoints; redo it if it needs more than 64. Walltimes: 2 h (2x2, 3x2), 8 h (4x2), 24 h (5x2). The pilots were kept and still feed the bond-dimension-needed measurement.
 
 ## Question
