@@ -25,6 +25,7 @@
 # TIME= sets the Slurm walltime, overriding the 24h default in the batch script:
 #   ./submit.sh LX=2 LY=2 TIME=00:30:00      # small run, backfills onto a free GPU fast
 #   ./submit.sh LX=3 LY=3 TIME=04:00:00
+#   ./submit.sh LX=80 LY=2 MEM=160G      # host RAM, default 64G
 # SHORTER WALLTIMES QUEUE FASTER. Slurm backfill only starts a lower-priority job early if
 # it would finish before the reserved high-priority job is due to start, so a 24h request
 # rarely fits any gap. Rough guide from past runs: 2x2/3x2 finish in minutes, 3x3 bd64 in
@@ -43,6 +44,7 @@ cd /home/s1931382/DynParQCircLearning
 TAG=""
 NAME=""
 TIME=""
+MEM=""
 
 for arg in "$@"; do
   if [[ "$arg" != *=* ]]; then
@@ -55,6 +57,7 @@ for arg in "$@"; do
     TAG)  TAG=$val ;;
     NAME) NAME=$val ;;
     TIME) TIME=$val ;;
+    MEM)  MEM=$val ;;
     *)    export "DPQC_${key}=${val}" ;;
   esac
 done
@@ -81,6 +84,11 @@ fi
 # scheduler only starts a lower-priority job early if it would finish before the
 # high-priority job holding that node is due to start, and a 24h request almost never
 # fits in such a gap. Right-size this and small runs start in minutes instead of hours.
+# MEM= overrides the #SBATCH --mem=64G host-RAM request, e.g. MEM=160G. Large
+# lattices need it for XLA compilation, which grows ~N^2 (53 GB at 56x2).
+MEM_ARG=()
+[ -n "$MEM" ] && MEM_ARG=(--mem="$MEM")
+
 TIME_ARG=()
 if [ -n "$TIME" ]; then
   TIME_ARG=(--time="$TIME")
@@ -98,4 +106,4 @@ EXCLUDE_ARG=()
 # --export=ALL forwards this shell's environment (including the DPQC_* we just exported)
 # to the job, captured now at submit time.
 echo "Submitting job '${NAME}'  (Lx=${R_LX} Ly=${R_LY} bond_dim=${R_BD} reset_layers=${R_RL} resets=${R_MODE}${TIME:+ time=$TIME})"
-sbatch --job-name="$NAME" "${TIME_ARG[@]}" "${EXCLUDE_ARG[@]}" --export=ALL run_plot_training_curve_tc.sh
+sbatch --job-name="$NAME" "${TIME_ARG[@]}" "${MEM_ARG[@]}" "${EXCLUDE_ARG[@]}" --export=ALL run_plot_training_curve_tc.sh

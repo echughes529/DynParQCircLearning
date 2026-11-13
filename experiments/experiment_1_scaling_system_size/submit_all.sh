@@ -32,6 +32,7 @@ METHODS="mc_n1 mc_n8 purified enumerated"
 MAXITER=3000
 TIME=""            # default: 02:00:00 for pilots, walltime_for(lattice, method) for production
 BOND_DIM=""
+MEM=""             # host RAM, e.g. MEM=160G (default 64G from the batch script)
 DRY_RUN=0
 FORCE=0
 for arg in "$@"; do
@@ -119,7 +120,7 @@ print(c.get('bond_dim', {}).get('$lat', {}).get('$m', '') or c.get('bond_dim_def
     fi
 
     CMD=(./submit.sh
-      NAME="$JOB_NAME" TIME="$RUN_TIME"
+      NAME="$JOB_NAME" TIME="$RUN_TIME" ${MEM:+MEM="$MEM"}
       LX="$LX" LY="$LY" TRIALS="$TRIALS" SEED="$SEED" MAXITER="$MAXITER"
       HOWOFTEN_TOSAVE="$HOWOFTEN_TOSAVE" RESET_LAYERS="$RESET_LAYERS"
       N_SPREAD_RESETS="$N_SPREAD_RESETS" BOND_DIM="$BD" USE_OPTIMAL_ORDERING=true USE_LADDER_ORDERING=true
