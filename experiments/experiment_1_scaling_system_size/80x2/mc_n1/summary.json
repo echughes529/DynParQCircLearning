@@ -1,0 +1,8 @@
+{
+  "lattice": "80x2",
+  "method": "mc_n1",
+  "status": "oom_host",
+  "Lx": 80,
+  "Ly": 2,
+  "n_qubits": 238
+}

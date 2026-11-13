@@ -72,6 +72,10 @@ def run_status(run_dir):
         return "ok"
     if re.search(r"RESOURCE_EXHAUSTED|Out of memory|out of memory", text + err):
         return "oom"
+    # Slurm's cgroup OOM killer sends SIGKILL: exit 137 and a bare "Killed",
+    # with no Python traceback. That is host RAM, not GPU memory.
+    if (m and m.group(1) == "137") or re.search(r"\bKilled\s+python", err):
+        return "oom_host"
     if m is None:
         # No closing line: the job was killed, normally at walltime.
         return "timeout"

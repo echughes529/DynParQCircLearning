@@ -1,0 +1,29 @@
+10:06:04 ram_mb=32876 proc_rss_mb=19 proc_hwm_mb=20 gpu_mb=0
+10:06:34 ram_mb=34145 proc_rss_mb=1700 proc_hwm_mb=1700 gpu_mb=1189
+10:07:04 ram_mb=34467 proc_rss_mb=2050 proc_hwm_mb=2059 gpu_mb=1189
+10:07:34 ram_mb=35206 proc_rss_mb=2769 proc_hwm_mb=2769 gpu_mb=1225
+10:08:04 ram_mb=35220 proc_rss_mb=2769 proc_hwm_mb=2769 gpu_mb=1225
+10:08:34 ram_mb=35159 proc_rss_mb=2769 proc_hwm_mb=2769 gpu_mb=1225
+10:09:04 ram_mb=35367 proc_rss_mb=2770 proc_hwm_mb=2770 gpu_mb=1225
+10:09:34 ram_mb=35127 proc_rss_mb=2770 proc_hwm_mb=2770 gpu_mb=1225
+10:10:04 ram_mb=35379 proc_rss_mb=2770 proc_hwm_mb=2770 gpu_mb=1225
+10:10:34 ram_mb=35515 proc_rss_mb=2770 proc_hwm_mb=2770 gpu_mb=1225
+10:11:04 ram_mb=35480 proc_rss_mb=2771 proc_hwm_mb=2771 gpu_mb=1225
+10:11:34 ram_mb=35176 proc_rss_mb=2771 proc_hwm_mb=2771 gpu_mb=1225
+10:12:04 ram_mb=35532 proc_rss_mb=2771 proc_hwm_mb=2771 gpu_mb=1225
+10:12:34 ram_mb=35410 proc_rss_mb=2771 proc_hwm_mb=2771 gpu_mb=1225
+10:13:04 ram_mb=35335 proc_rss_mb=2771 proc_hwm_mb=2771 gpu_mb=1225
+10:13:34 ram_mb=35361 proc_rss_mb=2772 proc_hwm_mb=2772 gpu_mb=1225
+10:18:47 ram_mb=35222 proc_rss_mb=2773 proc_hwm_mb=2773 gpu_mb=1225
+10:19:17 ram_mb=35253 proc_rss_mb=2773 proc_hwm_mb=2773 gpu_mb=1225
+10:19:47 ram_mb=35356 proc_rss_mb=2773 proc_hwm_mb=2773 gpu_mb=1225
+10:20:17 ram_mb=35133 proc_rss_mb=2773 proc_hwm_mb=2773 gpu_mb=1225
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=2298
+[memlog final] node_ram: used=31Gi avail=471Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3714410           exp1_prod_3x2_mc_n1                         00:14:34    RUNNING 
+3714410.bat+                    batch                         00:14:34    RUNNING 

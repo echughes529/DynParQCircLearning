@@ -1,0 +1,8 @@
+{
+  "lattice": "40x2",
+  "method": "enumerated",
+  "status": "oom",
+  "Lx": 40,
+  "Ly": 2,
+  "n_qubits": 118
+}

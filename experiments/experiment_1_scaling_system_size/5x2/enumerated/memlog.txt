@@ -1,0 +1,92 @@
+15:45:16 ram_mb=58283 proc_rss_mb=13 proc_hwm_mb=16 gpu_mb=0
+15:45:46 ram_mb=58884 proc_rss_mb=1432 proc_hwm_mb=1432 gpu_mb=285
+15:46:16 ram_mb=59212 proc_rss_mb=1724 proc_hwm_mb=1725 gpu_mb=285
+15:46:46 ram_mb=61616 proc_rss_mb=2151 proc_hwm_mb=2216 gpu_mb=285
+15:47:16 ram_mb=60251 proc_rss_mb=2190 proc_hwm_mb=2302 gpu_mb=551
+15:47:46 ram_mb=61553 proc_rss_mb=2804 proc_hwm_mb=2805 gpu_mb=551
+15:48:17 ram_mb=62272 proc_rss_mb=4179 proc_hwm_mb=4226 gpu_mb=5057
+15:48:47 ram_mb=62124 proc_rss_mb=4183 proc_hwm_mb=4226 gpu_mb=5057
+15:49:17 ram_mb=61798 proc_rss_mb=4183 proc_hwm_mb=4226 gpu_mb=5057
+15:49:47 ram_mb=63493 proc_rss_mb=4183 proc_hwm_mb=4226 gpu_mb=5057
+15:50:17 ram_mb=64108 proc_rss_mb=4183 proc_hwm_mb=4226 gpu_mb=5057
+15:50:47 ram_mb=62303 proc_rss_mb=4183 proc_hwm_mb=4226 gpu_mb=5057
+15:51:17 ram_mb=62705 proc_rss_mb=4183 proc_hwm_mb=4226 gpu_mb=5057
+15:51:47 ram_mb=62675 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:52:17 ram_mb=63934 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:52:47 ram_mb=61979 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:53:17 ram_mb=61961 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:53:47 ram_mb=61940 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:54:17 ram_mb=62301 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:54:47 ram_mb=62617 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:55:18 ram_mb=63191 proc_rss_mb=4184 proc_hwm_mb=4226 gpu_mb=5057
+15:55:48 ram_mb=62227 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:56:18 ram_mb=62289 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:56:48 ram_mb=62407 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:57:18 ram_mb=63263 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:57:48 ram_mb=62470 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:58:18 ram_mb=62776 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:58:48 ram_mb=61577 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:59:18 ram_mb=60666 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+15:59:48 ram_mb=61743 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+16:00:18 ram_mb=61282 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+16:00:48 ram_mb=60862 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+16:01:19 ram_mb=60715 proc_rss_mb=4185 proc_hwm_mb=4226 gpu_mb=5057
+16:01:49 ram_mb=59875 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:02:19 ram_mb=59254 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:02:49 ram_mb=59194 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:03:19 ram_mb=58449 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:03:49 ram_mb=58368 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:04:19 ram_mb=58323 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:04:49 ram_mb=58284 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:05:19 ram_mb=58304 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:05:49 ram_mb=58207 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:06:19 ram_mb=58192 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:06:49 ram_mb=57540 proc_rss_mb=4186 proc_hwm_mb=4226 gpu_mb=5057
+16:07:19 ram_mb=57738 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:07:49 ram_mb=70831 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:08:19 ram_mb=57712 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:08:50 ram_mb=57257 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:09:20 ram_mb=57427 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:09:50 ram_mb=57599 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:10:20 ram_mb=57617 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:10:50 ram_mb=57588 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:11:20 ram_mb=57613 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:11:50 ram_mb=57602 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:12:20 ram_mb=57728 proc_rss_mb=4187 proc_hwm_mb=4226 gpu_mb=5057
+16:12:50 ram_mb=57727 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:13:20 ram_mb=57697 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:13:50 ram_mb=57714 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:14:20 ram_mb=57713 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:14:50 ram_mb=57699 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:15:20 ram_mb=57763 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:15:50 ram_mb=57714 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:16:20 ram_mb=57674 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:16:50 ram_mb=57660 proc_rss_mb=4188 proc_hwm_mb=4226 gpu_mb=5057
+16:17:21 ram_mb=57635 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:17:51 ram_mb=57635 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:18:21 ram_mb=57646 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:18:51 ram_mb=57663 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:19:21 ram_mb=57670 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:19:51 ram_mb=57647 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:20:21 ram_mb=57687 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:20:51 ram_mb=57651 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:21:21 ram_mb=57671 proc_rss_mb=4189 proc_hwm_mb=4226 gpu_mb=5057
+16:21:51 ram_mb=57637 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:22:21 ram_mb=57631 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:22:51 ram_mb=57637 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:23:21 ram_mb=57639 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:23:51 ram_mb=57625 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:24:21 ram_mb=57631 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:24:51 ram_mb=57638 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:25:21 ram_mb=57688 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:25:52 ram_mb=57644 proc_rss_mb=4190 proc_hwm_mb=4226 gpu_mb=5057
+16:26:22 ram_mb=57619 proc_rss_mb=4191 proc_hwm_mb=4226 gpu_mb=5057
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=3734
+[memlog final] node_ram: used=52Gi avail=450Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3714421      exp1_prod_5x2_enumerated                         00:41:31    RUNNING 
+3714421.bat+                    batch                         00:41:31    RUNNING 

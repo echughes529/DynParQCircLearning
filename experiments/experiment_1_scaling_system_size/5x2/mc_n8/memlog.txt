@@ -1,0 +1,71 @@
+15:39:20 ram_mb=20327 proc_rss_mb=10 proc_hwm_mb=11 gpu_mb=0
+15:39:50 ram_mb=21202 proc_rss_mb=1310 proc_hwm_mb=1310 gpu_mb=423
+15:40:20 ram_mb=22369 proc_rss_mb=2301 proc_hwm_mb=2301 gpu_mb=2121
+15:40:50 ram_mb=22603 proc_rss_mb=2715 proc_hwm_mb=2715 gpu_mb=2121
+15:41:20 ram_mb=22887 proc_rss_mb=3004 proc_hwm_mb=3068 gpu_mb=2121
+15:41:50 ram_mb=22941 proc_rss_mb=3004 proc_hwm_mb=3085 gpu_mb=2121
+15:42:20 ram_mb=24507 proc_rss_mb=4587 proc_hwm_mb=4646 gpu_mb=2479
+15:42:50 ram_mb=24475 proc_rss_mb=4591 proc_hwm_mb=4646 gpu_mb=2479
+15:43:20 ram_mb=24457 proc_rss_mb=4591 proc_hwm_mb=4646 gpu_mb=2479
+15:43:50 ram_mb=24457 proc_rss_mb=4592 proc_hwm_mb=4646 gpu_mb=2479
+15:44:20 ram_mb=24459 proc_rss_mb=4592 proc_hwm_mb=4646 gpu_mb=2479
+15:44:50 ram_mb=24449 proc_rss_mb=4592 proc_hwm_mb=4646 gpu_mb=2479
+15:45:20 ram_mb=24452 proc_rss_mb=4592 proc_hwm_mb=4646 gpu_mb=2479
+15:45:50 ram_mb=24440 proc_rss_mb=4592 proc_hwm_mb=4646 gpu_mb=2479
+15:46:21 ram_mb=24439 proc_rss_mb=4592 proc_hwm_mb=4646 gpu_mb=2479
+15:46:51 ram_mb=24436 proc_rss_mb=4593 proc_hwm_mb=4646 gpu_mb=2479
+15:47:21 ram_mb=24433 proc_rss_mb=4593 proc_hwm_mb=4646 gpu_mb=2479
+15:47:51 ram_mb=24426 proc_rss_mb=4593 proc_hwm_mb=4646 gpu_mb=2479
+15:48:21 ram_mb=24421 proc_rss_mb=4593 proc_hwm_mb=4646 gpu_mb=2479
+15:48:51 ram_mb=24422 proc_rss_mb=4593 proc_hwm_mb=4646 gpu_mb=2479
+15:49:21 ram_mb=24416 proc_rss_mb=4593 proc_hwm_mb=4646 gpu_mb=2479
+15:49:51 ram_mb=24419 proc_rss_mb=4594 proc_hwm_mb=4646 gpu_mb=2479
+15:50:21 ram_mb=24484 proc_rss_mb=4594 proc_hwm_mb=4646 gpu_mb=2479
+15:50:51 ram_mb=24415 proc_rss_mb=4594 proc_hwm_mb=4646 gpu_mb=2479
+15:51:21 ram_mb=24410 proc_rss_mb=4594 proc_hwm_mb=4646 gpu_mb=2479
+15:51:51 ram_mb=24401 proc_rss_mb=4594 proc_hwm_mb=4646 gpu_mb=2479
+15:52:21 ram_mb=24393 proc_rss_mb=4594 proc_hwm_mb=4646 gpu_mb=2479
+15:52:51 ram_mb=24398 proc_rss_mb=4594 proc_hwm_mb=4646 gpu_mb=2479
+15:53:21 ram_mb=24394 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:53:51 ram_mb=24393 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:54:22 ram_mb=24393 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:54:52 ram_mb=24393 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:55:22 ram_mb=24426 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:55:52 ram_mb=24395 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:56:22 ram_mb=24385 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:56:52 ram_mb=24387 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:57:22 ram_mb=24395 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:57:52 ram_mb=24392 proc_rss_mb=4595 proc_hwm_mb=4646 gpu_mb=2479
+15:58:22 ram_mb=24385 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+15:58:52 ram_mb=24386 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+15:59:22 ram_mb=24386 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+15:59:52 ram_mb=24402 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+16:00:22 ram_mb=24439 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+16:00:52 ram_mb=24423 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+16:01:22 ram_mb=24424 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+16:01:52 ram_mb=24410 proc_rss_mb=4596 proc_hwm_mb=4646 gpu_mb=2479
+16:02:23 ram_mb=24413 proc_rss_mb=4597 proc_hwm_mb=4646 gpu_mb=2479
+16:02:53 ram_mb=24407 proc_rss_mb=4597 proc_hwm_mb=4646 gpu_mb=2479
+16:03:23 ram_mb=24421 proc_rss_mb=4597 proc_hwm_mb=4646 gpu_mb=2479
+16:03:53 ram_mb=24414 proc_rss_mb=4597 proc_hwm_mb=4646 gpu_mb=2479
+16:04:23 ram_mb=24419 proc_rss_mb=4597 proc_hwm_mb=4646 gpu_mb=2479
+16:04:53 ram_mb=24414 proc_rss_mb=4597 proc_hwm_mb=4646 gpu_mb=2479
+16:05:23 ram_mb=24451 proc_rss_mb=4598 proc_hwm_mb=4646 gpu_mb=2479
+16:05:53 ram_mb=24394 proc_rss_mb=4598 proc_hwm_mb=4646 gpu_mb=2479
+16:06:23 ram_mb=24390 proc_rss_mb=4598 proc_hwm_mb=4646 gpu_mb=2479
+16:06:53 ram_mb=24401 proc_rss_mb=4598 proc_hwm_mb=4646 gpu_mb=2479
+16:07:23 ram_mb=24400 proc_rss_mb=4598 proc_hwm_mb=4646 gpu_mb=2479
+16:07:53 ram_mb=24413 proc_rss_mb=4598 proc_hwm_mb=4646 gpu_mb=2479
+16:08:23 ram_mb=24411 proc_rss_mb=4599 proc_hwm_mb=4646 gpu_mb=2479
+16:08:53 ram_mb=24404 proc_rss_mb=4599 proc_hwm_mb=4646 gpu_mb=2479
+16:09:24 ram_mb=24415 proc_rss_mb=4599 proc_hwm_mb=4646 gpu_mb=2479
+16:09:54 ram_mb=24437 proc_rss_mb=4602 proc_hwm_mb=4646 gpu_mb=2457
+[memlog final] exit_code=0
+[memlog final] cgroup_peak_mb=4139
+[memlog final] node_ram: used=19Gi avail=483Gi
+[memlog final] gpu: 0 MiB, 45490 MiB
+[memlog final] sacct:
+JobID                         JobName     MaxRSS  MaxVMSize    Elapsed      State 
+------------ ------------------------ ---------- ---------- ---------- ---------- 
+3714419           exp1_prod_5x2_mc_n8                         00:30:41    RUNNING 
+3714419.bat+                    batch                         00:30:41    RUNNING 

@@ -1,0 +1,40 @@
+{
+  "Lx": 28,
+  "Ly": 2,
+  "h": 0.0,
+  "n_qubits": 82,
+  "nlayers": 2,
+  "trials": 10,
+  "maxiter": 3000,
+  "howoften_tosave": 10,
+  "bond_dim": 48,
+  "use_optimal_ordering": true,
+  "use_ladder_ordering": true,
+  "reset_layers": [
+    1
+  ],
+  "reset_qubits": [
+    54,
+    63,
+    72,
+    81
+  ],
+  "total_resets": 4,
+  "reset_mode": "pur",
+  "use_trajectory_resets": false,
+  "use_enumerated_resets": false,
+  "n_trajectories": 1,
+  "shared_reset_theta": true,
+  "seed": 1234,
+  "traj_seed": null,
+  "learning_rate": 0.01,
+  "n_mps_qubits": 90,
+  "reset_param_indices": [
+    1458
+  ],
+  "track_params": true,
+  "track_grads": true,
+  "svd_fwd_alg": "qr",
+  "precision": "double",
+  "slurm_job_id": "3714444"
+}
