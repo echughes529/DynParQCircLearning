@@ -38,7 +38,10 @@ def collect(exp_dir):
     rows = []
     for path in sorted(glob.glob(os.path.join(exp_dir, "*x*", "*", "summary.json"))):
         s = load_json(path)
-        if s.get("method") not in METHODS:
+        # The folder name is the method. A summary moved to an archive folder
+        # (e.g. 80x2/mc_n1_oom64G) still says method=mc_n1 inside, so the
+        # field alone would double-count it alongside the current run.
+        if os.path.basename(os.path.dirname(path)) != s.get("method") or s.get("method") not in METHODS:
             continue
         s["run_dir"] = os.path.dirname(path)
         s["bond_dim_needed"] = bd_needed.get(s["lattice"], {}).get(s["method"])
@@ -70,6 +73,10 @@ def write_summary_csv(rows, path):
 
 def size_axis(ax, rows):
     sizes = sorted({(r["n_qubits"], r["Lx"], r["Ly"]) for r in rows})
+    # Log axis: sizes run from 4 to 238 qubits, and on a linear axis the small
+    # lattices pile up on top of each other.
+    ax.set_xscale("log")
+    ax.minorticks_off()
     ax.set_xticks([s[0] for s in sizes])
     ax.set_xticklabels([size_label(s[1], s[2]) for s in sizes], rotation=30, ha="right")
     ax.set_xlabel("System size (qubits)")

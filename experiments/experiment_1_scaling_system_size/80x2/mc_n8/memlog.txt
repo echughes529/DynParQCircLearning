@@ -1,0 +1,5 @@
+11:19:46 ram_mb=6911 proc_rss_mb=10 proc_hwm_mb=11 gpu_mb=0
+11:20:16 ram_mb=9143 proc_rss_mb=1118 proc_hwm_mb=1118 gpu_mb=285
+11:20:46 ram_mb=17481 proc_rss_mb=5197 proc_hwm_mb=5197 gpu_mb=285
+11:21:16 ram_mb=17609 proc_rss_mb=5222 proc_hwm_mb=5321 gpu_mb=4791
+11:21:46 ram_mb=18130 proc_rss_mb=5360 proc_hwm_mb=5360 gpu_mb=4791
