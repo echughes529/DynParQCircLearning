@@ -4,6 +4,9 @@ Run:
     python -m src.diagnostics.reset_impl_bench --configs 3x3:traj:64,3x3:pur:104,3x3:enum:64
     python -m src.diagnostics.reset_impl_bench --configs 3x3:none:64,3x3:traj:64
     python -m src.diagnostics.reset_impl_bench --configs 4x3:enum:128 --trial-ladder 10,4,2,1
+    # Experiment 1.1 configuration (column ordering, 4 alternating-row resets):
+    python -m src.diagnostics.reset_impl_bench --configs 6x3:traj:64,6x3:pur:96 \
+        --ladder-ordering --n-spread-resets 4 --seed 1234 --repeats 3
 
 THE `none` ARM
 --------------
@@ -76,11 +79,22 @@ import jax.numpy as jnp
 from src.find_gs import _device_memory_bytes, _host_peak_rss_bytes
 from src.utilities.ansatz_classes import ToricCodeAnsatz
 from src.diagnostics.svd_call_counting import tap_backends
+from src.utilities.generate_toric_code_hamiltonian import spread_rung_reset_qubits
 
 NLAYERS = 2
 RESET_LAYERS = [1]
-SEED = 2026
-REPEATS = 5
+SEED = 2026          # --seed overrides (Experiment 1/1.1 production uses 1234)
+REPEATS = 5          # --repeats overrides; warm timings are the median of these
+
+# Experiment 1.1 (Lx x 3) settings, set from the command line in main() and
+# forwarded to every isolated child process, so a child measures exactly the
+# configuration the parent was asked for.
+#   LADDER_ORDERING  --ladder-ordering: column-by-column MPS order instead of
+#                    the random ordering search (ToricCodeAnsatz._ladder_order)
+#   N_SPREAD_RESETS  --n-spread-resets k: reset k rungs spread along the lattice
+#                    (spread_rung_reset_qubits) instead of one per plaquette
+LADDER_ORDERING = False
+N_SPREAD_RESETS = None
 MODES = ("traj", "pur", "enum", "none")
 
 
@@ -96,13 +110,17 @@ def time_call(fn, *args):
 
 
 def build_ansatz(Lx, Ly, mode, bond_dim, trials, n_trajectories, branch_chunk_size=None):
+    reset_qubits = (None if N_SPREAD_RESETS is None
+                    else spread_rung_reset_qubits(Lx, Ly, N_SPREAD_RESETS))
     return ToricCodeAnsatz(
         Lx=Lx, Ly=Ly, nlayers=NLAYERS,
         # An empty list, not None: None means "resets on every layer". [] means
         # total_resets=0, which is the reset-free control.
         reset_layers=([] if mode == "none" else RESET_LAYERS),
+        which_qubits_for_prob_reset=reset_qubits,
         trials=trials, seed=SEED, bond_dim=bond_dim,
         use_optimal_ordering=True,
+        use_ladder_ordering=LADDER_ORDERING,
         # `none` deliberately goes through the trajectory code path too. Routing
         # it through the plain unitary ansatz instead would change the circuit
         # (4 Cartan blocks per plaquette rather than 3), skip the ordering
@@ -128,6 +146,8 @@ def bench(Lx, Ly, mode, bond_dim, trials, n_trajectories, branch_chunk_size=None
 
     row = dict(lattice=f"{Lx}x{Ly}", mode=mode, bond_dim=bond_dim, trials=trials,
                n_trajectories=n_trajectories, branch_chunk_size=branch_chunk_size,
+               ladder_ordering=LADDER_ORDERING, n_spread_resets=N_SPREAD_RESETS,
+               seed=SEED, repeats=REPEATS,
                oom=False, failed_stage="", error="")
     stage = "build"
 
@@ -271,7 +291,12 @@ def run_isolated(spec, args):
            "--single", spec, "--row-out", row_path,
            "--trials", str(args.trials),
            "--n-trajectories", str(args.n_trajectories),
+           "--seed", str(args.seed), "--repeats", str(args.repeats),
            "--out", args.out]
+    if args.ladder_ordering:
+        cmd += ["--ladder-ordering"]
+    if args.n_spread_resets is not None:
+        cmd += ["--n-spread-resets", str(args.n_spread_resets)]
     if args.branch_chunk_size is not None:
         cmd += ["--branch-chunk-size", str(args.branch_chunk_size)]
     if os.path.exists(row_path):
@@ -298,6 +323,9 @@ def run_isolated(spec, args):
 
 
 def main():
+    # These module-level settings are read by build_ansatz/bench; "global" makes
+    # the assignments below rebind the module's names rather than create locals.
+    global LADDER_ORDERING, N_SPREAD_RESETS, SEED, REPEATS
     parser = argparse.ArgumentParser()
     parser.add_argument("--configs",
                         help="comma-separated LxxLy:mode:bond_dim, "
@@ -316,7 +344,21 @@ def main():
                              "memory is a process-wide high-water mark, so only "
                              "safe for one config or in ascending memory order.")
     parser.add_argument("--out", default="outputs/three_resets/bench.csv")
+    parser.add_argument("--ladder-ordering", action="store_true",
+                        help="column-by-column MPS order (ToricCodeAnsatz.use_ladder_ordering)")
+    parser.add_argument("--n-spread-resets", type=int, default=None,
+                        help="reset this many rungs spread along the lattice "
+                             "(spread_rung_reset_qubits) instead of one per plaquette")
+    parser.add_argument("--seed", type=int, default=SEED,
+                        help=f"parameter init seed (default {SEED})")
+    parser.add_argument("--repeats", type=int, default=REPEATS,
+                        help=f"warm calls timed per stage; the median is reported (default {REPEATS})")
     args = parser.parse_args()
+
+    LADDER_ORDERING = args.ladder_ordering
+    N_SPREAD_RESETS = args.n_spread_resets
+    SEED = args.seed
+    REPEATS = args.repeats
 
     # Child mode: measure exactly one config and hand the row back as JSON.
     if args.single:
