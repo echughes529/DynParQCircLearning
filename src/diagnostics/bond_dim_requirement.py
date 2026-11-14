@@ -133,11 +133,12 @@ LADDERS = {
 # Rungs above the exact cap are dropped per arm in run_lattice.
 AUTO_LADDER = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512]
 
-# --n-spread-resets: reset k rungs spread along an Lx x 2 ladder instead of
-# the default one-per-plaquette set (Experiment 1). None keeps the default.
+# --n-spread-resets: reset k rungs spread along an Lx x 2 or Lx x 3 lattice
+# instead of the default one-per-plaquette set (Experiments 1 and 1.1). None
+# keeps the default.
 N_SPREAD_RESETS = None
 
-# --ladder-ordering: column-by-column MPS order on Lx x 2 ladders.
+# --ladder-ordering: column-by-column MPS order (ToricCodeAnsatz._ladder_order).
 LADDER_ORDERING = False
 
 
@@ -477,10 +478,10 @@ def main():
                              "(a checkpoint.npz written by optimize()); comma-separated for "
                              "several, e.g. one per Experiment 1 pilot")
     parser.add_argument("--ladder-ordering", action="store_true",
-                        help="column-by-column MPS order on Lx x 2 ladders "
-                             "(ToricCodeAnsatz.use_ladder_ordering)")
+                        help="column-by-column MPS order "
+                             "(ToricCodeAnsatz.use_ladder_ordering; Ly = 2 or more)")
     parser.add_argument("--n-spread-resets", type=int, default=None,
-                        help="reset this many rungs spread along an Lx x 2 ladder "
+                        help="reset this many rungs spread along an Lx x 2 or Lx x 3 lattice "
                              "(spread_rung_reset_qubits) instead of the default reset qubits")
     args = parser.parse_args()
 

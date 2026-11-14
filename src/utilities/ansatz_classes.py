@@ -422,20 +422,38 @@ class ToricCodeAnsatz(VariationalAnsatz):
         print(f"  sys_to_mps: {self.sys_to_mps}")
 
     def _ladder_order(self):
-        """System qubits in column order along an Lx x 2 ladder.
+        """System qubits column by column (use_ladder_ordering).
 
-        At each x: top horizontal edge (x,0)-(x+1,0), the rung (x,0)-(x,1), then
-        the bottom horizontal edge (x,1)-(x+1,1); the last column has only its
-        rung. Every claw (bottom edge x with rung x, top edge x and rung x+1)
-        then joins sites at most 2 apart, independent of Lx, so the bond
-        dimension a 2-layer circuit needs stays bounded as the ladder grows.
+        The chain visits x = 0 .. Lx-1 in turn and lays out that column's edges
+        (horizontal edges (x,y)-(x+1,y), and vertical edges (x,y)-(x,y+1)) in a
+        fixed pattern. Every claw lives in one plaquette, i.e. in columns x and
+        x+1, so its two sites are a bounded distance apart independent of Lx,
+        and the bond dimension a 2-layer circuit needs stays bounded as the
+        lattice grows.
+
+        Ly = 2 (the ladder ordering of Experiment 1, unchanged): top horizontal
+        edge, the rung, then the bottom horizontal edge; the last column has only
+        its rung. Max claw distance 2.
+
+        Ly >= 3 (Experiment 1.1): all vertical edges of the column top to
+        bottom, then all horizontal edges top to bottom (v0 v1 h0 h1 h2 at
+        Ly = 3). Of the 120 in-column orders at Ly = 3 this has the smallest max
+        claw distance (3; "rows in order", h0 v0 h1 v1 h2, has 4), and it needs
+        equal or less bond dimension at every Lx x 3 size measured. It is *not*
+        used for Ly = 2, which would change Experiment 1's ordering.
         """
-        if self.Ly != 2:
-            raise ValueError(f"use_ladder_ordering needs an Lx x 2 lattice, got {self.Lx}x{self.Ly}")
+        if self.Ly < 2:
+            raise ValueError(f"use_ladder_ordering needs Ly >= 2, got {self.Lx}x{self.Ly}")
         lat = self.lattice
+        if self.Ly == 2:
+            pattern = [(0, 0), (0, 1), (1, 0)]                       # (y, direction)
+        else:
+            pattern = ([(y, 1) for y in range(self.Ly)]
+                       + [(y, 0) for y in range(self.Ly)])
         order = []
         for x in range(self.Lx):
-            for q in (lat.qubit_index(x, 0, 0), lat.qubit_index(x, 0, 1), lat.qubit_index(x, 1, 0)):
+            for y, d in pattern:
+                q = lat.qubit_index(x, y, d)
                 if q is not None:
                     order.append(q)
         if sorted(order) != list(range(lat.num_qubits)):

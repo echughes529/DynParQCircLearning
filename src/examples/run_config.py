@@ -99,8 +99,9 @@ use_prob_resets_ansatz = _env("use_prob_resets_ansatz", True)
 use_mps = _env("use_mps", True)
 bond_dim = _env("bond_dim", 64)
 use_optimal_ordering = _env("use_optimal_ordering", True)
-# Lx x 2 ladders: column-by-column MPS order (claws span <= 2 sites at any Lx).
-# Overrides use_optimal_ordering. See ToricCodeAnsatz.use_ladder_ordering.
+# Column-by-column MPS order (claws span <= 2 sites on Lx x 2 ladders, <= 3 on
+# Lx x 3, at any Lx). Overrides use_optimal_ordering. See
+# ToricCodeAnsatz._ladder_order.
 use_ladder_ordering = _env("use_ladder_ordering", False)
 
 # Reset implementation. True samples ONE branch of the reset channel per step
@@ -146,9 +147,10 @@ traj_seed = _env("traj_seed", None)
 # Layer indexing is zero-based, so [0] means only the first layer.
 reset_layers = _env("reset_layers", [1])
 # Which qubits get reset. None keeps the default (one rung per plaquette, so the
-# count grows with Lx). An integer k picks k rungs spread evenly along an Lx x 2
-# ladder (generate_toric_code_hamiltonian.spread_rung_reset_qubits), so the
-# number of resets stays fixed while the lattice grows. Ly must be 2.
+# count grows with Lx). An integer k picks k rungs spread evenly along the
+# lattice (generate_toric_code_hamiltonian.spread_rung_reset_qubits), so the
+# number of resets stays fixed while the lattice grows. Ly must be 2 or 3 (on
+# Lx x 3 consecutive resets alternate between the two rows of rungs).
 n_spread_resets = _env("n_spread_resets", None)
 
 track_grads = _env("track_grads", False)

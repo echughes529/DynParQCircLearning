@@ -65,25 +65,42 @@ def toric_ground_energy_h0(Lx, Ly):
 
 
 def spread_rung_reset_qubits(Lx, Ly, n_resets):
-    """Reset qubits spread evenly along an Lx x 2 ladder.
+    """Reset qubits spread evenly along an Lx x 2 ladder or an Lx x 3 lattice.
 
-    Uses the ladder's rungs (vertical edges, direction 1 -- the same edge type
-    the ansatz resets by default). There are Lx rungs, at x = 0 .. Lx-1.
+    Uses vertical edges ("rungs", direction 1 -- the same edge type the ansatz
+    resets by default). Reset k sits at x_k = round(linspace(0, Lx-1, n_resets))[k].
 
-    * Lx >= n_resets: the rungs at x = round(linspace(0, Lx-1, n_resets)),
-      which are distinct whenever Lx >= n_resets.
+    Ly = 2 (Experiment 1), one row of Lx rungs:
+
+    * Lx >= n_resets: the rungs at x_k, which are distinct whenever Lx >= n_resets.
     * Lx <  n_resets: every rung, then horizontal edges in qubit-index order
       (top row left to right, then bottom row) until n_resets are chosen.
       For n_resets=4 this gives all four qubits at 2x2 and the three rungs plus
       the top-left horizontal edge (qubit 0) at 3x2.
 
+    Ly = 3 (Experiment 1.1), two rows of rungs -- row 0 joins vertex rows 0 and
+    1, row 1 joins vertex rows 1 and 2. Reset k uses the rung at (x_k, k mod 2),
+    so consecutive resets alternate between the rows (a zigzag along the
+    lattice). The same x_k as on the ladders; at Lx = 3, where rounding gives
+    x = 0, 1, 1, 2, the alternation keeps the two x = 1 resets distinct. Needs
+    Lx >= 3 for n_resets = 4. Examples (n_resets=4): 3x3 -> [6, 7, 10, 11],
+    4x3 -> [9, 11, 14, 16], 10x3 -> [27, 33, 40, 46].
+
     Returns a sorted list of qubit indices.
     """
-    if Ly != 2:
-        raise ValueError(f"spread_rung_reset_qubits is defined for Lx x 2 ladders, got Ly={Ly}")
+    if Ly not in (2, 3):
+        raise ValueError(f"spread_rung_reset_qubits is defined for Ly = 2 or 3, got Ly={Ly}")
     lattice = ToricCode(Lx, Ly)
     if not 1 <= n_resets <= lattice.num_qubits:
         raise ValueError(f"n_resets={n_resets} must be in 1..{lattice.num_qubits} for {Lx}x{Ly}")
+
+    if Ly == 3:
+        xs = np.round(np.linspace(0, Lx - 1, n_resets)).astype(int)
+        chosen = [lattice.qubit_index(int(x), k % 2, 1) for k, x in enumerate(xs)]
+        if None in chosen or len(set(chosen)) != n_resets:
+            raise ValueError(f"alternating-row rule cannot place {n_resets} distinct resets "
+                             f"on {Lx}x{Ly}: {chosen}")
+        return sorted(int(q) for q in chosen)
 
     rungs = [lattice.qubit_index(x, 0, 1) for x in range(Lx)]
     if Lx >= n_resets:

@@ -35,9 +35,10 @@ def test_spread_rule_valid(Lx):
         assert lat.qubit_index(0, 0, 1) in q and lat.qubit_index(Lx - 1, 0, 1) in q
 
 
-def test_spread_rule_rejects_non_ladder():
+def test_spread_rule_rejects_unsupported_ly():
+    # Ly = 3 is Experiment 1.1 (tests/test_exp1_1_tools.py); Ly = 4 has no rule.
     with pytest.raises(ValueError):
-        spread_rung_reset_qubits(3, 3, 4)
+        spread_rung_reset_qubits(4, 4, 4)
 
 
 # ----------------------------------------------------------------------------
@@ -64,12 +65,20 @@ def test_ladder_order_bounded_claws(Lx):
         assert a.n_mps_qubits == a.lattice.num_qubits + (8 if purified else 0)
 
 
-def test_ladder_order_rejects_non_ladder():
+@pytest.mark.parametrize("Lx", range(2, 31))
+def test_ladder_order_unchanged_for_ly2(Lx):
+    """The column ordering was generalised to Ly >= 3 (Experiment 1.1); the
+    Ly = 2 order Experiment 1 ran with must be exactly the original one."""
     from src.utilities.ansatz_classes import ToricCodeAnsatz
-    with pytest.raises(ValueError):
-        ToricCodeAnsatz(Lx=3, Ly=3, nlayers=2, trials=1, maxiter=1, bond_dim=16,
-                        use_prob_resets_ansatz=True, reset_layers=[1],
-                        use_ladder_ordering=True)
+    lat = ToricCode(Lx, 2)
+    original = [q for x in range(Lx)
+                for q in (lat.qubit_index(x, 0, 0), lat.qubit_index(x, 0, 1), lat.qubit_index(x, 1, 0))
+                if q is not None]
+    # _ladder_order only reads Lx, Ly and lattice, so call it on a bare object
+    # instead of building (and ordering) a full ansatz 29 times.
+    stub = ToricCodeAnsatz.__new__(ToricCodeAnsatz)
+    stub.Lx, stub.Ly, stub.lattice = Lx, 2, lat
+    assert ToricCodeAnsatz._ladder_order(stub) == original
 
 
 def test_ladder_order_same_energy():
