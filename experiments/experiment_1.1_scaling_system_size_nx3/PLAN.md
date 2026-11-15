@@ -10,7 +10,14 @@ All decisions made 2026-11-14:
 4. Qubit-matched lattice list.
 5. Run A both ways: the literal failure points and a 4x3 calibration.
 
-Next step: Phase 0 (code, tests, local smoke test). No jobs are submitted until you approve Phase 1.
+Phase 0 done 2026-11-15:
+
+- Code: commits 69e19a0 (reset rule and ordering), 7d25b15 (comparison overlay), 985da0e (bench flags), plus this folder's scripts and configs.
+- Tests pass.
+- 3x3 CPU smoke test passed, covering all four arms, analysis and the overlay.
+- The bench's SVD counts at 3x3 (72 traj, 112 purified per step) match the cost model's counts exactly. Only the time per SVD remains to be measured.
+
+Next step: Phase 1. No jobs are submitted until you approve it.
 
 ## Summary
 
@@ -228,7 +235,7 @@ Why B is defensible:
   - (b) **Calibration.** A at 4x3 for MC n1 and purified, with fewer trials and/or steps chosen from Phase 1 so the runs finish inside 48 h.
     - Folders: `caps_192_256/4x3/mc_n1_calib/` and `purified_calib/`. `exp1_compare` ignores folder names that are not method names, so these never enter the stopping-rule plots.
     - They are compared trial by trial with the same trials under B. With this JAX version, the first k rows of a `(10, nparams)` uniform draw from seed 1234 equal a `(k, nparams)` draw from the same seed (checked for one shape), so trial k starts from the same parameters. A test asserts this for the real parameter count.
-    - A small extra plot, `comparisons/calibration_4x3.png`, shows exact energy against step for A and B on the shared trials.
+    - A small extra plot, `comparisons/calibration_4x3.png`, shows exact energy against step for A and B on the shared trials. It will be written in Phase 3, once there is data to test it on.
 
 ### 4. Folder and scripts
 
@@ -242,7 +249,7 @@ caps_64_96/                         policy B
   config.json
   <lattice>/<method>/               stdout.out, stderr.err, memlog.txt, run.h5, checkpoint.npz,
                                     run_config.json, analysis.h5 (MC), metrics.csv, summary.json, plots/
-  comparisons/                      summary.csv, the Experiment 1 plot set, plus vs_exp1_*.png
+  comparisons/                      summary.csv, the Experiment 1 plot set, plus overlay_*.png
 caps_192_256/                       policy A, same layout
                                     (3x3/{mc_n1,mc_n8,enumerated} link to caps_64_96/3x3/)
 comparisons/                        A vs B vs Experiment 1 overlays
