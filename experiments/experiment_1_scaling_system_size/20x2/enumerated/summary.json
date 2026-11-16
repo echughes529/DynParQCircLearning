@@ -54,6 +54,22 @@
     -53.999873647665666
   ],
   "final_energy_mean": -53.99390842210512,
+  "final_exact_energy_per_trial": [
+    -54.999636022341804,
+    -54.99995529598866,
+    -48.999905611238724,
+    -53.99843843957193,
+    -53.99946008731123,
+    -53.00192509098675,
+    -54.998033931243214,
+    -56.99976816993428,
+    -53.99972999525109,
+    -53.99993460953991
+  ],
+  "final_exact_energy_mean": -53.99967872534076,
+  "n_converged_exact": 0,
+  "steps_to_converge_exact_mean": null,
+  "seconds_to_converge_exact_mean": null,
   "final_p_reset_mean": 2.3518639865445145e-135,
   "convergence_rel_tol": 0.001,
   "n_converged": 0,

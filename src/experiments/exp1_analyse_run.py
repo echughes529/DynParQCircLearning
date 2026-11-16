@@ -134,7 +134,7 @@ def exact_energy_and_variance(twin, params, batch):
 # ----------------------------------------------------------------------------
 # Plots (per run)
 # ----------------------------------------------------------------------------
-def plot_run(out_dir, steps, exact_E, sigma, p_reset, E0, cfg, method):
+def plot_run(out_dir, steps, logged_E, sigma, p_reset, E0, cfg, method, exact_E=None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -151,13 +151,20 @@ def plot_run(out_dir, steps, exact_E, sigma, p_reset, E0, cfg, method):
         ax.set_ylabel(ylabel)
         ax.grid(True, ls="--", alpha=0.5)
 
-    fig, ax = plt.subplots(figsize=(5, 3.8))
-    trials_and_mean(ax, exact_E, "Energy")
-    ax.axhline(E0, color="k", ls="--", lw=1)
-    ax.set_title(tag)
-    fig.tight_layout()
-    fig.savefig(os.path.join(out_dir, "training_curve.png"), dpi=200)
-    plt.close(fig)
+    # Two views, named by their source on the y axis:
+    #   logged: what the method reported during training (MC: its own estimate)
+    #   exact:  the trained parameters evaluated with the exact reset channel
+    views = [(logged_E, "Logged energy (method's estimate)", "training_curve_logged.png")]
+    if exact_E is not None and np.isfinite(exact_E).all():
+        views.append((exact_E, "Exact energy of trained parameters", "training_curve_exact.png"))
+    for E, ylabel, fname in views:
+        fig, ax = plt.subplots(figsize=(5, 3.8))
+        trials_and_mean(ax, E, ylabel)
+        ax.axhline(E0, color="k", ls="--", lw=1)
+        ax.set_title(tag)
+        fig.tight_layout()
+        fig.savefig(os.path.join(out_dir, fname), dpi=200)
+        plt.close(fig)
 
     if sigma is not None and np.any(sigma > 0):
         fig, ax = plt.subplots(figsize=(5, 3.8))
@@ -197,15 +204,19 @@ def rolling_mean(x, w):
     return (c[:, k] - c[:, lo]) / (k - lo)
 
 
-def load_cached_sigma(run_dir, T, S):
-    """sigma (T, S) from an earlier exact analysis (analysis.h5), or None."""
+def load_cached_exact(run_dir, T, S):
+    """(sigma, exact_energy), each (T, S), from an earlier exact analysis
+    (analysis.h5), or (None, None)."""
     path = os.path.join(run_dir, "analysis.h5")
     if not os.path.exists(path):
-        return None
+        return None, None
     import h5py
     with h5py.File(path, "r") as f:
         sig = np.asarray(f["sigma"])
-    return sig if sig.shape == (T, S) else None
+        ex = np.asarray(f["exact_energy"]) if "exact_energy" in f else None
+    if sig.shape != (T, S):
+        return None, None
+    return sig, (ex if ex is not None and ex.shape == (T, S) else None)
 
 
 def analyse(run_dir, batch=None, sigma_mode="auto"):
@@ -250,10 +261,12 @@ def analyse(run_dir, batch=None, sigma_mode="auto"):
     # exact re-evaluation of MC parameters is no longer used for curves or
     # convergence; the enumerated twin below is only for sigma.
     sigma = None
+    exact_E = None
     if mode != "traj":
         sigma = np.zeros_like(logged_E)
+        exact_E = logged_E                 # exact methods log the exact energy
     elif sigma_mode in ("auto", "cached"):
-        sigma = load_cached_sigma(run_dir, T, S)
+        sigma, exact_E = load_cached_exact(run_dir, T, S)
         if sigma is None and sigma_mode == "cached":
             raise SystemExit(f"{run_dir}: no usable analysis.h5 for --sigma cached")
     if mode == "traj" and sigma_mode == "exact":
@@ -276,6 +289,9 @@ def analyse(run_dir, batch=None, sigma_mode="auto"):
             f.attrs["n_trajectories"] = n
     if sigma is None:                       # MC with no exact sigma available
         sigma = np.full_like(logged_E, np.nan)
+    if exact_E is None:                     # MC with no exact re-evaluation
+        exact_E = np.full_like(logged_E, np.nan)
+    have_exact = bool(np.isfinite(exact_E).all())
     energy = logged_E
     smooth_E = rolling_mean(energy, SMOOTH_WINDOW)
 
@@ -294,16 +310,25 @@ def analyse(run_dir, batch=None, sigma_mode="auto"):
     rel_err = np.abs(smooth_E - E0) / abs(E0)
     conv_step = [steps_to_converge(rel_err[t], steps) for t in range(T)]
     conv_time = [None if s is None else float(t_at[list(steps).index(s)]) for s in conv_step]
+    # The same rule on the exact energy of the trained parameters (no smoothing:
+    # it has no sampling noise). None where the exact energy wasn't computed.
+    if have_exact:
+        rel_ex = np.abs(exact_E - E0) / abs(E0)
+        conv_step_ex = [steps_to_converge(rel_ex[t], steps) for t in range(T)]
+        conv_time_ex = [None if s is None else float(t_at[list(steps).index(s)]) for s in conv_step_ex]
+    else:
+        conv_step_ex = conv_time_ex = None
 
     # metrics.csv
     with open(os.path.join(run_dir, "metrics.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["trial", "step", "cumulative_seconds", "logged_energy",
-                    "smoothed_energy", "sigma", "p_reset", "grad_norm"])
+                    "smoothed_energy", "exact_energy", "sigma", "p_reset", "grad_norm"])
         for t in range(T):
             for k in range(S):
                 w.writerow([t, int(steps[k]), f"{t_at[k]:.6g}",
                             f"{logged_E[t, k]:.12g}", f"{smooth_E[t, k]:.12g}",
+                            "" if not np.isfinite(exact_E[t, k]) else f"{exact_E[t, k]:.12g}",
                             "" if not np.isfinite(sigma[t, k]) else f"{sigma[t, k]:.6g}",
                             "" if p_reset is None else f"{p_reset[t, k]:.6g}",
                             "" if grad_norm is None else f"{grad_norm[t, k]:.6g}"])
@@ -338,6 +363,13 @@ def analyse(run_dir, batch=None, sigma_mode="auto"):
         "smooth_window_snapshots": SMOOTH_WINDOW,
         "final_energy_per_trial": smooth_E[:, -1],
         "final_energy_mean": float(smooth_E[:, -1].mean()),
+        # the exact energy of the trained parameters (exact reset channel);
+        # equals the logged energy for purified/enumerated, None if not computed
+        "final_exact_energy_per_trial": exact_E[:, -1] if have_exact else None,
+        "final_exact_energy_mean": float(exact_E[:, -1].mean()) if have_exact else None,
+        "n_converged_exact": None if conv_step_ex is None else int(sum(s is not None for s in conv_step_ex)),
+        "steps_to_converge_exact_mean": None if conv_step_ex is None else mean_or_none(conv_step_ex),
+        "seconds_to_converge_exact_mean": None if conv_time_ex is None else mean_or_none(conv_time_ex),
         "final_p_reset_mean": None if p_reset is None else float(p_reset[:, -1].mean()),
         "convergence_rel_tol": CONVERGENCE_REL_TOL,
         "n_converged": int(sum(s is not None for s in conv_step)),
@@ -350,7 +382,7 @@ def analyse(run_dir, batch=None, sigma_mode="auto"):
 
     plot_run(os.path.join(run_dir, "plots"), steps, logged_E,
              sigma if (mode == "traj" and np.isfinite(sigma).any()) else None,
-             p_reset, E0, cfg, method)
+             p_reset, E0, cfg, method, exact_E=exact_E)
     print(f"[exp1] wrote metrics.csv, summary.json, plots/ in {run_dir}")
     return summary
 

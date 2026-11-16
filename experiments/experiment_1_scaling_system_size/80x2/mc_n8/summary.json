@@ -43,6 +43,11 @@
     -216.99912206472072
   ],
   "final_energy_mean": -213.06219687853635,
+  "final_exact_energy_per_trial": null,
+  "final_exact_energy_mean": null,
+  "n_converged_exact": null,
+  "steps_to_converge_exact_mean": null,
+  "seconds_to_converge_exact_mean": null,
   "final_p_reset_mean": 0.00010230273348999542,
   "convergence_rel_tol": 0.001,
   "n_converged": 0,

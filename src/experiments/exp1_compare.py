@@ -66,8 +66,10 @@ def write_summary_csv(rows, path):
     cols = ["lattice", "n_qubits", "method", "status", "bond_dim", "bond_dim_needed",
             "n_mps_qubits", "trials", "maxiter", "compile_seconds", "mean_step_seconds",
             "total_seconds", "peak_gpu_gib", "n_nonfinite_steps", "final_sigma_mean",
-            "training_sigma_mean", "final_energy_mean", "E0", "final_p_reset_mean",
-            "n_converged", "steps_to_converge_mean", "seconds_to_converge_mean"]
+            "training_sigma_mean", "final_energy_mean", "final_exact_energy_mean", "E0",
+            "final_p_reset_mean", "n_converged", "n_converged_exact",
+            "steps_to_converge_mean", "steps_to_converge_exact_mean",
+            "seconds_to_converge_mean", "seconds_to_converge_exact_mean"]
     with open(path, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
@@ -212,11 +214,16 @@ def plot_per_size(rows, out_dir, plt):
          ("mc_n1", "mc_n8"), "sigma_vs_size.png"),
         ("final_sigma_mean", 1.0, r"$\sigma[\hat E_n]$ at the trained parameters", True,
          ("mc_n1", "mc_n8"), "sigma_final_vs_size.png"),
-        ("energy_gap_per_qubit", 1.0, r"$(E - E_0)/N$", False, None, "energy_gap_vs_size.png"),
+        ("energy_gap_per_qubit", 1.0, r"Logged energy (method's estimate): $(E - E_0)/N$",
+         False, None, "energy_gap_vs_size_logged.png"),
+        ("energy_gap_exact_per_qubit", 1.0, r"Exact energy of trained parameters: $(E - E_0)/N$",
+         False, None, "energy_gap_vs_size_exact.png"),
     ]
     for r in rows:
-        if r.get("final_energy_mean") is not None and r.get("E0") is not None:
-            r["energy_gap_per_qubit"] = (r["final_energy_mean"] - r["E0"]) / r["n_qubits"]
+        for src, dst in (("final_energy_mean", "energy_gap_per_qubit"),
+                         ("final_exact_energy_mean", "energy_gap_exact_per_qubit")):
+            if r.get(src) is not None and r.get("E0") is not None:
+                r[dst] = (r[src] - r["E0"]) / r["n_qubits"]
     for key, scale, ylabel, logy, only, fname in specs:
         fig, ax = plt.subplots(figsize=(6, 4.2))
         drawn = False
@@ -245,7 +252,19 @@ def plot_per_size(rows, out_dir, plt):
         plt.close(fig)
 
 
+CURVE_VIEWS = [
+    # metrics.csv column, y-axis label, file suffix
+    ("logged_energy", "Logged energy (method's estimate)", "logged"),
+    ("exact_energy", "Exact energy of trained parameters", "exact"),
+]
+
+
 def plot_training_curves(rows, out_dir, plt):
+    for col, ylabel, suffix in CURVE_VIEWS:
+        _plot_training_curves(rows, out_dir, plt, col, ylabel, suffix)
+
+
+def _plot_training_curves(rows, out_dir, plt, col, ylabel, suffix):
     by_lattice = {}
     for r in rows:
         if r["status"] == "ok":
@@ -260,11 +279,17 @@ def plot_training_curves(rows, out_dir, plt):
             curves = []
             for t in trials:
                 sel = data["trial"] == t
-                # The energy each method logged during training (for MC its own
-                # noisy n-sample estimate), not an exact re-evaluation.
-                ax.plot(data["step"][sel], data["logged_energy"][sel], color=colour,
+                # logged_energy: what the method reported in training (MC: its
+                # own noisy estimate). exact_energy: the trained parameters
+                # evaluated with the exact reset channel; missing where it
+                # wasn't computed (e.g. 80x2 MC), in which case skip the run.
+                if col not in data.dtype.names or not np.isfinite(data[col][sel]).all():
+                    break           # this view isn't available for this run
+                ax.plot(data["step"][sel], data[col][sel], color=colour,
                         alpha=0.25, lw=0.8)
-                curves.append(data["logged_energy"][sel])
+                curves.append(data[col][sel])
+            if not curves:
+                continue
             steps = data["step"][data["trial"] == trials[0]]
             # Purified and enumerated are both exact and share initial
             # parameters, so their curves coincide; dash purified so both show.
@@ -272,12 +297,12 @@ def plot_training_curves(rows, out_dir, plt):
                     ls="--" if r["method"] == "purified" else "-", zorder=3)
         ax.axhline(exact_ground_energy(Lx, Ly), color="k", ls="--", lw=1)
         ax.set_xlabel("Training step")
-        ax.set_ylabel("Energy")
+        ax.set_ylabel(ylabel)
         ax.set_title(size_label(Lx, Ly))
         ax.grid(True, ls="--", alpha=0.5)
         ax.legend(fontsize=8)
         fig.tight_layout()
-        fig.savefig(os.path.join(out_dir, f"training_curves_{Lx}x{Ly}.png"), dpi=200)
+        fig.savefig(os.path.join(out_dir, f"training_curves_{Lx}x{Ly}_{suffix}.png"), dpi=200)
         plt.close(fig)
 
 
