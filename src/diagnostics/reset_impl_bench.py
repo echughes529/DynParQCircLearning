@@ -95,6 +95,7 @@ REPEATS = 5          # --repeats overrides; warm timings are the median of these
 #                    (spread_rung_reset_qubits) instead of one per plaquette
 LADDER_ORDERING = False
 N_SPREAD_RESETS = None
+TRAJ_RNG_SEED = 7    # trajectory draws in bench(); not affected by --seed
 MODES = ("traj", "pur", "enum", "none")
 
 
@@ -147,7 +148,7 @@ def bench(Lx, Ly, mode, bond_dim, trials, n_trajectories, branch_chunk_size=None
     row = dict(lattice=f"{Lx}x{Ly}", mode=mode, bond_dim=bond_dim, trials=trials,
                n_trajectories=n_trajectories, branch_chunk_size=branch_chunk_size,
                ladder_ordering=LADDER_ORDERING, n_spread_resets=N_SPREAD_RESETS,
-               seed=SEED, repeats=REPEATS,
+               seed=SEED, traj_rng_seed=TRAJ_RNG_SEED, repeats=REPEATS,
                oom=False, failed_stage="", error="")
     stage = "build"
 
@@ -162,7 +163,9 @@ def bench(Lx, Ly, mode, bond_dim, trials, n_trajectories, branch_chunk_size=None
     row["ordering_search_seconds"] = float(getattr(ansatz, "ordering_search_seconds", np.nan))
 
     params = jnp.asarray(ansatz.initparams)
-    rng = np.random.default_rng(7)
+    # Trajectory uniforms: fixed seed, independent of --seed (which only sets
+    # the parameter init). Timing does not depend on which branches are drawn.
+    rng = np.random.default_rng(TRAJ_RNG_SEED)
 
     # Every arm is driven through the same vmapped-and-jitted callables the
     # optimiser itself uses, so these are the real per-step costs rather than a
@@ -317,6 +320,10 @@ def run_isolated(spec, args):
     return dict(lattice=f"{Lx}x{Ly}", mode=mode, bond_dim=bd, trials=args.trials,
                 n_trajectories=args.n_trajectories,
                 branch_chunk_size=args.branch_chunk_size,
+                # same configuration columns bench() writes, so a dead child's
+                # row is attributed to the configuration that actually ran
+                ladder_ordering=args.ladder_ordering, n_spread_resets=args.n_spread_resets,
+                seed=args.seed, traj_rng_seed=TRAJ_RNG_SEED, repeats=args.repeats,
                 oom=True, failed_stage="process_died",
                 error=f"child returncode {proc.returncode}"
                       f"{' (signal)' if killed_by_signal else ''}")
@@ -350,7 +357,8 @@ def main():
                         help="reset this many rungs spread along the lattice "
                              "(spread_rung_reset_qubits) instead of one per plaquette")
     parser.add_argument("--seed", type=int, default=SEED,
-                        help=f"parameter init seed (default {SEED})")
+                        help=f"parameter init seed (default {SEED}); trajectory draws "
+                             f"always use seed {TRAJ_RNG_SEED}")
     parser.add_argument("--repeats", type=int, default=REPEATS,
                         help=f"warm calls timed per stage; the median is reported (default {REPEATS})")
     args = parser.parse_args()
@@ -359,6 +367,8 @@ def main():
     N_SPREAD_RESETS = args.n_spread_resets
     SEED = args.seed
     REPEATS = args.repeats
+    if REPEATS < 1:
+        parser.error("--repeats must be at least 1")
 
     # Child mode: measure exactly one config and hand the row back as JSON.
     if args.single:

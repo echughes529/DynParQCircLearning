@@ -82,8 +82,9 @@ def spread_rung_reset_qubits(Lx, Ly, n_resets):
     1, row 1 joins vertex rows 1 and 2. Reset k uses the rung at (x_k, k mod 2),
     so consecutive resets alternate between the rows (a zigzag along the
     lattice). The same x_k as on the ladders; at Lx = 3, where rounding gives
-    x = 0, 1, 1, 2, the alternation keeps the two x = 1 resets distinct. Needs
-    Lx >= 3 for n_resets = 4. Examples (n_resets=4): 3x3 -> [6, 7, 10, 11],
+    x = 0, 1, 1, 2, the alternation keeps the two x = 1 resets distinct. Raises
+    ValueError if the rule would repeat a qubit (e.g. 2x3 with n_resets = 6;
+    2x3 with 4 works). Examples (n_resets=4): 3x3 -> [6, 7, 10, 11],
     4x3 -> [9, 11, 14, 16], 10x3 -> [27, 33, 40, 46].
 
     Returns a sorted list of qubit indices.

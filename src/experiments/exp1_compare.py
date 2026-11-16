@@ -244,19 +244,25 @@ def default_label(rows, exp_dir):
 
 
 def parse_reference(spec):
-    """'DIR' or 'DIR:LABEL' -> (DIR, LABEL or None)."""
+    """'DIR' or 'DIR:LABEL' -> (DIR, LABEL or None).
+
+    The text after the last ':' is a label only if what precedes it is an
+    existing directory, so a path that itself contains ':' is kept whole.
+    """
     if ":" in spec:
         d, label = spec.rsplit(":", 1)
-        return d, (label or None)
+        if os.path.isdir(d):
+            return d, (label or None)
     return spec, None
 
 
 def overlay_size_axis(ax):
     # Plain qubit counts: lattice labels from two experiments would collide
     # (5x3 and 8x2 are both 22 qubits).
-    from matplotlib.ticker import FixedLocator, NullLocator, ScalarFormatter
+    from matplotlib.ticker import LogLocator, NullLocator, ScalarFormatter
     ax.set_xscale("log")
-    ax.xaxis.set_major_locator(FixedLocator([5, 10, 20, 50, 100, 200]))
+    # 1-2-5 ticks over whatever range the data spans (e.g. 4 to 238 qubits)
+    ax.xaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
     ax.xaxis.set_minor_locator(NullLocator())
     ax.xaxis.set_major_formatter(ScalarFormatter())
     ax.set_xlabel("System size (qubits)")

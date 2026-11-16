@@ -41,9 +41,10 @@ def test_spread_rule_valid_ly3(Lx):
     assert lat.qubit_index(0, 0, 1) in q and lat.qubit_index(Lx - 1, 1, 1) in q
 
 
-def test_spread_rule_rejects_2x3():
-    # x = 0, 0, 1, 1 with rows 0, 1, 0, 1 is fine in principle, but 2x3 is not
-    # in the experiment; make sure an impossible request raises, not duplicates.
+def test_spread_rule_raises_instead_of_duplicating():
+    # 2x3 with 4 resets is valid ((0,0), (0,1), (1,0), (1,1)); with 6 the
+    # alternation must repeat a rung, which raises rather than returning duplicates.
+    assert spread_rung_reset_qubits(2, 3, 4) == [3, 4, 5, 6]          # all four rungs
     with pytest.raises(ValueError):
         spread_rung_reset_qubits(2, 3, 6)
 
@@ -189,3 +190,19 @@ def test_compare_rejects_duplicate_overlay_labels(tmp_path):
     with pytest.raises(SystemExit):
         main(["--exp-dir", a, "--reference-exp-dir", b])          # both default to L×3
     main(["--exp-dir", a, "--label", "B", "--reference-exp-dir", f"{b}:A"])
+
+
+def test_column_order_rejects_ly4():
+    from src.utilities.ansatz_classes import ToricCodeAnsatz
+    with pytest.raises(ValueError):
+        ToricCodeAnsatz(Lx=3, Ly=4, nlayers=2, trials=1, maxiter=1, bond_dim=16,
+                        use_prob_resets_ansatz=True, reset_layers=[1], use_ladder_ordering=True)
+
+
+def test_parse_reference_keeps_colon_paths(tmp_path):
+    from src.experiments.exp1_compare import parse_reference
+    d = tmp_path / "runs:2026"
+    d.mkdir()
+    assert parse_reference(str(d)) == (str(d), None)            # colon in path, no label
+    assert parse_reference(f"{d}:L×2") == (str(d), "L×2")       # label after an existing dir
+    assert parse_reference(f"{tmp_path}:A") == (str(tmp_path), "A")

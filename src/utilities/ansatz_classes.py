@@ -56,11 +56,12 @@ class ToricCodeAnsatz(VariationalAnsatz):
 
     bond_dim: Optional[int] = None
     use_optimal_ordering: bool = True
-    # Lx x 2 ladders only: order the MPS chain column by column (top edge, rung,
-    # bottom edge at each x). Every claw then spans at most 2 sites at any Lx,
-    # with no search. Takes precedence over use_optimal_ordering, whose random
-    # search stops beating the natural order beyond ~8x2 (max claw distance
-    # grows like Lx either way). See _ladder_order.
+    # Lx x 2 and Lx x 3 lattices: order the MPS chain column by column, with no
+    # search. Every claw then spans at most 2 sites on ladders (top edge, rung,
+    # bottom edge at each x) and at most 3 on Lx x 3 (verticals, then
+    # horizontals), at any Lx; purified ancillas add up to 2-4. Takes precedence
+    # over use_optimal_ordering, whose random search stops beating the natural
+    # order beyond ~8x2. See _ladder_order.
     use_ladder_ordering: bool = False
 
     # SVD-reduction feature flags (see tests/test_mps_gate_paths.py
@@ -435,15 +436,17 @@ class ToricCodeAnsatz(VariationalAnsatz):
         edge, the rung, then the bottom horizontal edge; the last column has only
         its rung. Max claw distance 2.
 
-        Ly >= 3 (Experiment 1.1): all vertical edges of the column top to
+        Ly = 3 (Experiment 1.1): all vertical edges of the column top to
         bottom, then all horizontal edges top to bottom (v0 v1 h0 h1 h2 at
         Ly = 3). Of the 120 in-column orders at Ly = 3 this has the smallest max
         claw distance (3; "rows in order", h0 v0 h1 v1 h2, has 4), and it needs
         equal or less bond dimension at every Lx x 3 size measured. It is *not*
         used for Ly = 2, which would change Experiment 1's ordering.
         """
-        if self.Ly < 2:
-            raise ValueError(f"use_ladder_ordering needs Ly >= 2, got {self.Lx}x{self.Ly}")
+        # Ly >= 4 would also give a column order, but its claw bound and bond
+        # dimension have never been checked, so refuse it rather than run it.
+        if self.Ly not in (2, 3):
+            raise ValueError(f"use_ladder_ordering supports Ly = 2 or 3, got {self.Lx}x{self.Ly}")
         lat = self.lattice
         if self.Ly == 2:
             pattern = [(0, 0), (0, 1), (1, 0)]                       # (y, direction)

@@ -2,8 +2,9 @@
 # Submit the post-training analysis for every finished Experiment 1.1 run.
 #
 # Usage:
-#   experiments/experiment_1.1_scaling_system_size_nx3/analyse_all.sh POLICY=caps_64_96
-#   experiments/experiment_1.1_scaling_system_size_nx3/analyse_all.sh POLICY=caps_192_256 FORCE=1
+#   experiments/experiment_1.1_scaling_system_size_nx3/analyse_all.sh
+#   experiments/experiment_1.1_scaling_system_size_nx3/analyse_all.sh FORCE=1
+# (2026-11-16: only policy A, POLICY=caps_192_256, the default, is run.)
 #   ... DRY_RUN=1    print the commands, run nothing
 #   ... TIME=08:00:00 BATCH=1 MEM=128G   for the MC analysis jobs
 #
