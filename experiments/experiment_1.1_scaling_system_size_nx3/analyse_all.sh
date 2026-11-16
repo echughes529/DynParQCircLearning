@@ -7,10 +7,16 @@
 # (2026-11-16: only policy A, POLICY=caps_192_256, the default, is run.)
 #   ... DRY_RUN=1    print the commands, run nothing
 #   ... TIME=08:00:00 BATCH=1 MEM=128G   for the MC analysis jobs
+#   ... EXACT=0      MC: skip the exact re-evaluation (exact view left missing)
 #
-# Purified, enumerated and failed runs are analysed here (no GPU needed, they
-# take seconds). The MC methods re-evaluate every saved parameter vector over
-# all 3^R branches, so they go to ANY free GPU (timing is irrelevant there).
+# Both energy views are produced (2026-11-16 decision): each method's logged
+# training energy, and the exact energy of its trained parameters (exact reset
+# channel = purified/enumerated). They coincide for purified/enumerated, which
+# are analysed here (no GPU, seconds), as are failed runs. For the MC methods
+# the exact view means re-evaluating every saved parameter vector over all 3^R
+# branches (--sigma exact, which also gives the exact sigma), so they go to ANY
+# free GPU (timing is irrelevant there). With EXACT=0 they run with --sigma none
+# here instead: logged view only, exact energy and sigma recorded as missing.
 # Then make the comparison plots on the login node:
 #   python -m src.experiments.exp1_compare --exp-dir <EXP>/<POLICY> \
 #       --reference-exp-dir experiments/experiment_1_scaling_system_size
@@ -27,6 +33,7 @@ EXP=experiments/experiment_1.1_scaling_system_size_nx3
 cd "$REPO"
 
 POLICY=caps_192_256
+EXACT=1
 FORCE=0
 DRY_RUN=0
 TIME=04:00:00
@@ -73,9 +80,11 @@ for d in "$PDIR"/*x*/*/; do
   if [ "$base" = purified ] || [ "$base" = enumerated ] || \
      ! grep -q "Job finished with exit code: 0" "$d/stdout.out"; then
     CMD=(python -m src.experiments.exp1_analyse_run "$d")
+  elif [ "$EXACT" != 1 ]; then
+    CMD=(python -m src.experiments.exp1_analyse_run "$d" --sigma none)
   else
     CMD=(./submit_diag.sh NAME="$AN_NAME" TIME="$TIME" GRES=gpu:1 ${MEM:+MEM="$MEM"} --
-         python -m src.experiments.exp1_analyse_run "$d" ${BATCH:+--batch "$BATCH"})
+         python -m src.experiments.exp1_analyse_run "$d" --sigma exact ${BATCH:+--batch "$BATCH"})
   fi
   if [ "$DRY_RUN" = 1 ]; then echo "${CMD[*]}"; else "${CMD[@]}"; fi
 done

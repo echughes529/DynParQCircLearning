@@ -70,6 +70,12 @@ Next step: Phase 1. No jobs are submitted until you approve it.
 > - Purified times out at 3x3, so it has no completed run.
 > - Enumerated completes 3x3 and runs out of GPU memory at 4x3.
 >
+> **Two energy views, as in Experiment 1 (decided 2026-11-16, cb288ce).** Analyses and plots show both, clearly labelled:
+> - **Logged energy:** each method's own training estimate. For MC it is noisy.
+> - **Exact energy of the trained parameters:** the same parameters under the exact reset channel. It is identical to the purified/enumerated energy.
+>
+> Convergence and final energy are reported in both views. `analyse_all.sh` runs the MC analyses with `--sigma exact`. `EXACT=0` skips that for a size where it is too expensive; the exact view is then recorded as missing.
+>
 > **Open issue: cost of the MC post-hoc analysis at χ=192.**
 > - The enumerated twin evaluates 81 branches for every saved parameter vector: 301 snapshots × 10 trials.
 > - At χ=192 this could take several A40-days per run. Phase 3's fallbacks (a) and (b) would then be needed.
