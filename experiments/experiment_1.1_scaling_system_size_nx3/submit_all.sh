@@ -2,9 +2,11 @@
 # Submit Experiment 1.1 training runs (Lx x 3): one Slurm job per (lattice, method).
 #
 # Usage (from anywhere):
-#   experiments/experiment_1.1_scaling_system_size_nx3/submit_all.sh POLICY=caps_64_96
-#   experiments/experiment_1.1_scaling_system_size_nx3/submit_all.sh POLICY=caps_192_256 LATTICES="4x3"
-#   experiments/experiment_1.1_scaling_system_size_nx3/submit_all.sh POLICY=caps_192_256 KIND=calib
+#   experiments/experiment_1.1_scaling_system_size_nx3/submit_all.sh LATTICES="3x3 4x3"
+#
+# 2026-11-16: only policy A (caps_192_256, the default) is run; policy B
+# (caps_64_96) and the KIND=calib runs were dropped (PLAN.md update note). The
+# POLICY/KIND machinery below is kept as written.
 #   ... METHODS="mc_n1 mc_n8"   only these arms
 #   ... DRY_RUN=1               print the submit commands, submit nothing
 #   ... FORCE=1                 resubmit runs that already finished cleanly
@@ -41,7 +43,7 @@ REPO=/home/s1931382/DynParQCircLearning
 EXP=experiments/experiment_1.1_scaling_system_size_nx3
 cd "$REPO"
 
-POLICY=""
+POLICY=caps_192_256
 KIND=production
 LATTICES=""
 METHODS=""
@@ -56,8 +58,8 @@ for arg in "$@"; do
 done
 
 case "$POLICY" in
-  caps_64_96|caps_192_256) ;;
-  *) echo "error: POLICY must be caps_64_96 or caps_192_256" >&2; exit 1 ;;
+  caps_192_256) ;;
+  *) echo "error: POLICY must be caps_192_256 (policy B was dropped 2026-11-16)" >&2; exit 1 ;;
 esac
 PDIR="$EXP/$POLICY"
 CFG="$PDIR/config.json"

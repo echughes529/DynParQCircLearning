@@ -25,7 +25,7 @@ REPO=/home/s1931382/DynParQCircLearning
 EXP=experiments/experiment_1.1_scaling_system_size_nx3
 cd "$REPO"
 
-POLICY=""
+POLICY=caps_192_256
 FORCE=0
 DRY_RUN=0
 TIME=04:00:00
@@ -36,8 +36,8 @@ for arg in "$@"; do
   declare "${arg%%=*}=${arg#*=}"
 done
 case "$POLICY" in
-  caps_64_96|caps_192_256) ;;
-  *) echo "error: POLICY must be caps_64_96 or caps_192_256" >&2; exit 1 ;;
+  caps_192_256) ;;
+  *) echo "error: POLICY must be caps_192_256 (policy B was dropped 2026-11-16)" >&2; exit 1 ;;
 esac
 PDIR="$EXP/$POLICY"
 P=${POLICY#caps_}

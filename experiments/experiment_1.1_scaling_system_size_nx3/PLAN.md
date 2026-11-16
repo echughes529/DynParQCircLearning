@@ -19,6 +19,62 @@ Phase 0 done 2026-11-15:
 
 Next step: Phase 1. No jobs are submitted until you approve it.
 
+> **Update 2026-11-16: policy A only.**
+>
+> Policy B (caps 64/96) is dropped, so every run is at the need: 192 for MC/enumerated, 256 for purified.
+>
+> What that changes:
+> - **No B runs.** `caps_64_96/` is removed, and the scripts accept only `POLICY=caps_192_256` (now the default).
+> - **3x3 runs in A.** The 3x3 MC/enumerated runs were going to be linked from B; they now run in A itself.
+> - **No calibration runs.** They existed only to compare A with B.
+> - Sections 3–5 below still describe both policies. Read them for A only.
+>
+> **Phase 1 results.** These were run 2026-11-15 and are in `bd_requirement/` and `timing/`.
+>
+> Bond dimension needed, at random init:
+>
+> | | 10x3 | 20x3 |
+> |---|---|---|
+> | traj/enumerated | 192 | 192 |
+> | purified | 256 | 192 |
+>
+> These match the scratch measurements in section 3.
+>
+> A40, 10 trials:
+>
+> | Config | Warm step | Compile | Peak GPU | 3000 steps |
+> |---|---|---|---|---|
+> | 4x3 MC n1 @192 | 10.0 s | 5 min | 2.2 GiB | ~8.5 h |
+> | 4x3 MC n8 @192 | 19.5 s | 5 min | 15.5 GiB | ~16 h |
+> | 3x3 purified @256 | 75 s | 5 min | 11.8 GiB | ~63 h |
+> | 4x3 purified @256 | 82.5 s | 8 min | 14.9 GiB | ~69 h |
+> | 4x3 enumerated @192 | — | OOM at compile | — | — |
+>
+> The cost model in "Cost estimates" was far too pessimistic for A at small sizes: it predicted about 126 h for 4x3 MC n1. Use the measured numbers.
+>
+> **Walltimes.** They live in `caps_192_256/config.json`, with about 1.3–1.5× margin plus compile:
+>
+> | Arm | 3x3 | 4x3 | 5x3 | 6x3 | 8x3 |
+> |---|---|---|---|---|---|
+> | MC n1 | 8 h | 12 h | 36 h | 48 h | 48 h |
+> | MC n8 | 16 h | 24 h | 48 h | 48 h | |
+> | Purified | 48 h, expected timeout | | | | |
+> | Enumerated | 12 h | 2 h, expected OOM | | | |
+>
+> - The 3x3 MC and enumerated times are scaled from 4x3 by SVD count, and enumerated also from the August 3x3 bench.
+> - 5x3 and larger were not benched, so those walltimes are guesses.
+> - Each arm stops at its first failure. A size with no walltime is refused by `submit_all.sh`, and gets one only once the size below it has finished. So submit one size at a time, smallest first.
+>
+> **Expected outcome:**
+> - MC n1 and n8 complete 3x3 and 4x3, and possibly 5x3–6x3.
+> - Purified times out at 3x3, so it has no completed run.
+> - Enumerated completes 3x3 and runs out of GPU memory at 4x3.
+>
+> **Open issue: cost of the MC post-hoc analysis at χ=192.**
+> - The enumerated twin evaluates 81 branches for every saved parameter vector: 301 snapshots × 10 trials.
+> - At χ=192 this could take several A40-days per run. Phase 3's fallbacks (a) and (b) would then be needed.
+> - To be timed on the first finished MC run before choosing.
+
 ## Summary
 
 - Same study as Experiment 1: how the cost and accuracy of the four reset methods scale with system size. The difference is that it runs on Lx × 3 lattices (5·Lx − 3 qubits) instead of Lx × 2 ladders.
@@ -433,11 +489,11 @@ See Decision 5.
 
 ## Decisions needed
 
-1. ~~Bond-dimension policy~~: decided 2026-11-14, run both A (192/256) and B (64/96).
+1. ~~Bond-dimension policy~~: decided 2026-11-14, run both A (192/256) and B (64/96). **Changed 2026-11-16: A only.**
 2. ~~In-column ordering~~: decided 2026-11-14, verticals first.
 3. ~~Reset-qubit rule~~: decided 2026-11-14, alternating rows.
 4. ~~Lattice list~~: decided 2026-11-14, qubit-matched.
-5. ~~How to run policy A~~: decided 2026-11-14, both (a) literal and (b) the 4x3 calibration.
+5. ~~How to run policy A~~: decided 2026-11-14, both (a) literal and (b) the 4x3 calibration. **Changed 2026-11-16: (a) only; the calibration existed to compare with B.**
 
 Still to settle after Phase 1, with your approval: exact caps (if the A40 bench changes the picture), walltimes, MEM, and the calibration's trial and step counts.
 

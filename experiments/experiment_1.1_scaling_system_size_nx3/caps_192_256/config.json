@@ -1,5 +1,5 @@
 {
-  "description": "Experiment 1.1, policy A: caps at the random-init need (192 MC/enumerated, 256 purified). See ../PLAN.md section 3.",
+  "description": "Experiment 1.1: caps at the random-init need (192 MC/enumerated, 256 purified). The only policy run (decided 2026-11-16). See ../PLAN.md.",
   "fixed": {
     "Ly": 3,
     "nlayers": 2,
@@ -121,26 +121,35 @@
   },
   "bond_dim": {},
   "bond_dim_needed": {},
-  "shared_runs": {
+  "walltime_default": null,
+  "walltime": {
     "3x3": {
-      "mc_n1": "caps_64_96",
-      "mc_n8": "caps_64_96",
-      "enumerated": "caps_64_96"
+      "mc_n1": "08:00:00",
+      "mc_n8": "16:00:00",
+      "purified": "48:00:00",
+      "enumerated": "12:00:00"
+    },
+    "4x3": {
+      "mc_n1": "12:00:00",
+      "mc_n8": "24:00:00",
+      "enumerated": "02:00:00"
+    },
+    "5x3": {
+      "mc_n1": "36:00:00",
+      "mc_n8": "48:00:00"
+    },
+    "6x3": {
+      "mc_n1": "48:00:00",
+      "mc_n8": "48:00:00"
+    },
+    "8x3": {
+      "mc_n1": "48:00:00"
     }
   },
-  "shared_runs_note": "On the 12-site 3x3 chain a bond can never exceed 2^min(k, 12-k) <= 64, so caps 64 and 192 build identical tensors: one run, linked from here.",
-  "walltime_default": null,
-  "walltime": {},
-  "walltime_note": "Filled from the Phase 1 A40 bench: only sizes that fit, plus the first that does not (PLAN.md Decision 5a).",
+  "walltime_note": "From the Phase 1 A40 bench (timing/bench_A_*.csv, 10 trials) plus ~1.3-1.5x margin and compile. Measured: 4x3 MC n1 10.0 s/step, MC n8 19.5 s/step; 3x3 purified 75 s/step (~63 h, expected timeout); 4x3 enumerated OOM at compile (2 h job records it); 4x3 purified 82.5 s/step (not submitted: purified stops at 3x3). 3x3 MC/enumerated scaled from 4x3 by SVD count. 5x3+ are unmeasured guesses: each arm is submitted one size at a time and stops at its first failure. Sizes with no entry are refused by submit_all.sh until a walltime is added here.",
   "mem": {},
-  "calibration": {
-    "lattice": "4x3",
-    "methods": [
-      "mc_n1",
-      "purified"
-    ],
-    "trials": null,
-    "maxiter": null,
-    "note": "Trial and step counts chosen from the Phase 1 bench so the runs finish in 48 h. Trials 0..k-1 start from the same parameters as in caps_64_96 (tests/test_exp1_1_tools.py)."
+  "phase1": {
+    "bd_requirement": "../bd_requirement/",
+    "timing": "../timing/bench_A_n1.csv, bench_A_n8.csv"
   }
 }
