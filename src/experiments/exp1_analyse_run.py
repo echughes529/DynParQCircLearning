@@ -8,32 +8,33 @@ Run:
 A run folder is one method on one lattice. It reads run.h5 and run_config.json
 (written by plot_training_curve_tc when DPQC_RUN_DIR is set) and writes
 
-    analysis.h5   MC methods only: exact energy and sigma per (trial, snapshot)
+    analysis.h5   MC methods, --sigma exact only: sigma (and the exact energy) per
+                  (trial, snapshot)
     metrics.csv   one row per (trial, logged step)
     summary.json  one record for the comparison script
     plots/        training curve, sigma and p_reset histories
 
-EXACT ENERGY AND SIGMA
-----------------------
-Purified and enumerated log the exact reset-channel energy during training, so
-their logged energy is used as is and sigma is 0.
+ENERGY (2026-11-16)
+-------------------
+Every method is judged on the energy it logged during training: the exact
+reset-channel energy for purified and enumerated, the noisy n-sample estimate
+for MC. Convergence and the final energy use a trailing rolling mean of the
+logged energy over SMOOTH_WINDOW snapshots, so one noisy MC point can't decide
+convergence. MC parameters are NOT re-evaluated exactly for curves.
 
-The MC methods log a noisy n-sample estimate. Every saved parameter vector is
-re-evaluated with an enumerated twin of the ansatz (same lattice, reset qubits,
-bond dimension and parameter layout), whose trajectory_table returns, for all
-3^R trajectories i, (p^(i) E^(i), p^(i)). From those
+SIGMA
+-----
+sigma[E_n] is the exact standard deviation of the method's own n-sample
+estimate (0 for purified and enumerated). For MC it needs an enumerated twin of
+the ansatz evaluated over all 3^R trajectories at every saved parameter vector:
 
     E        = sum_i p^(i) E^(i)
     sigma^2  = (1/n) sum_i p^(i) (E^(i) - E)^2        n = this method's n
 
-which is the exact variance of the method's own n-sample energy estimate.
-
-ALIGNMENT
----------
-optimize() logs the energy of the parameters *before* step i's update but saves
-the parameters *after* it. So the MC exact energy at row "step i" belongs to the
-parameters at the start of step i+1. With logging every 10 steps this one-step
-offset is immaterial for convergence; metrics.csv records it as params_step.
+--sigma auto (default) reuses an existing analysis.h5 and otherwise leaves sigma
+blank; --sigma exact recomputes it (GPU; expensive at large lattices); --sigma
+none leaves it blank. optimize() saves parameters after each step's update, so
+the sigma at row "step i" belongs to the parameters at the start of step i+1.
 """
 
 import argparse
@@ -179,7 +180,35 @@ def plot_run(out_dir, steps, exact_E, sigma, p_reset, E0, cfg, method):
 # ----------------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------------
-def analyse(run_dir, batch=None):
+# Convergence and the final energy are judged on a trailing rolling mean of the
+# LOGGED energy over this many snapshots (50 steps at howoften_tosave=10), so a
+# single noisy Monte Carlo point can neither make nor break convergence. For the
+# exact methods the logged curve is already smooth and the window changes nothing
+# that matters.
+SMOOTH_WINDOW = 5
+
+
+def rolling_mean(x, w):
+    """Trailing mean over the last w entries of each row (fewer at the start)."""
+    x = np.asarray(x, dtype=float)
+    c = np.cumsum(np.pad(x, ((0, 0), (1, 0))), axis=1)
+    k = np.arange(1, x.shape[1] + 1)
+    lo = np.maximum(k - w, 0)
+    return (c[:, k] - c[:, lo]) / (k - lo)
+
+
+def load_cached_sigma(run_dir, T, S):
+    """sigma (T, S) from an earlier exact analysis (analysis.h5), or None."""
+    path = os.path.join(run_dir, "analysis.h5")
+    if not os.path.exists(path):
+        return None
+    import h5py
+    with h5py.File(path, "r") as f:
+        sig = np.asarray(f["sigma"])
+    return sig if sig.shape == (T, S) else None
+
+
+def analyse(run_dir, batch=None, sigma_mode="auto"):
     method = os.path.basename(os.path.normpath(run_dir))
     lattice = os.path.basename(os.path.dirname(os.path.normpath(run_dir)))
     status = run_status(run_dir)
@@ -216,7 +245,18 @@ def analyse(run_dir, batch=None):
     E0 = exact_ground_energy(Lx, Ly)
     mode = cfg["reset_mode"]
 
-    if mode == "traj":
+    # ENERGY: every method is judged on the energy it logged during training
+    # (2026-11-16 decision). For MC that is its noisy n-sample estimate. The
+    # exact re-evaluation of MC parameters is no longer used for curves or
+    # convergence; the enumerated twin below is only for sigma.
+    sigma = None
+    if mode != "traj":
+        sigma = np.zeros_like(logged_E)
+    elif sigma_mode in ("auto", "cached"):
+        sigma = load_cached_sigma(run_dir, T, S)
+        if sigma is None and sigma_mode == "cached":
+            raise SystemExit(f"{run_dir}: no usable analysis.h5 for --sigma cached")
+    if mode == "traj" and sigma_mode == "exact":
         n = cfg["n_trajectories"]
         twin = build_enumerated_twin(cfg)
         if twin.nparams != all_params.shape[2]:
@@ -225,7 +265,7 @@ def analyse(run_dir, batch=None):
         E_flat, V_flat = exact_energy_and_variance(twin, flat, batch or T)
         exact_E = E_flat.reshape(T, S)
         sigma = np.sqrt(np.maximum(V_flat, 0.0) / n).reshape(T, S)
-        params_step = steps + 1
+        params_step = steps + 1     # optimize() saves params after the update
         import h5py
         with h5py.File(os.path.join(run_dir, "analysis.h5"), "w") as f:
             f.create_dataset("steps", data=steps)
@@ -234,10 +274,10 @@ def analyse(run_dir, batch=None):
             f.create_dataset("var_trajectory_energy", data=V_flat.reshape(T, S))
             f.create_dataset("sigma", data=sigma)
             f.attrs["n_trajectories"] = n
-    else:
-        exact_E = logged_E
-        sigma = np.zeros_like(exact_E)
-        params_step = steps
+    if sigma is None:                       # MC with no exact sigma available
+        sigma = np.full_like(logged_E, np.nan)
+    energy = logged_E
+    smooth_E = rolling_mean(energy, SMOOTH_WINDOW)
 
     # p_reset from the (shared) reset theta
     idx = cfg["reset_param_indices"]
@@ -251,20 +291,20 @@ def analyse(run_dir, batch=None):
     cum_t = np.nancumsum(step_times)
     t_at = cum_t[np.minimum(steps, len(cum_t) - 1)]
 
-    rel_err = np.abs(exact_E - E0) / abs(E0)
+    rel_err = np.abs(smooth_E - E0) / abs(E0)
     conv_step = [steps_to_converge(rel_err[t], steps) for t in range(T)]
     conv_time = [None if s is None else float(t_at[list(steps).index(s)]) for s in conv_step]
 
     # metrics.csv
     with open(os.path.join(run_dir, "metrics.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["trial", "step", "params_step", "cumulative_seconds", "logged_energy",
-                    "exact_energy", "sigma", "p_reset", "grad_norm"])
+        w.writerow(["trial", "step", "cumulative_seconds", "logged_energy",
+                    "smoothed_energy", "sigma", "p_reset", "grad_norm"])
         for t in range(T):
             for k in range(S):
-                w.writerow([t, int(steps[k]), int(params_step[k]), f"{t_at[k]:.6g}",
-                            f"{logged_E[t, k]:.12g}", f"{exact_E[t, k]:.12g}",
-                            f"{sigma[t, k]:.6g}",
+                w.writerow([t, int(steps[k]), f"{t_at[k]:.6g}",
+                            f"{logged_E[t, k]:.12g}", f"{smooth_E[t, k]:.12g}",
+                            "" if not np.isfinite(sigma[t, k]) else f"{sigma[t, k]:.6g}",
                             "" if p_reset is None else f"{p_reset[t, k]:.6g}",
                             "" if grad_norm is None else f"{grad_norm[t, k]:.6g}"])
 
@@ -288,12 +328,16 @@ def analyse(run_dir, batch=None):
         "device": str(res.get("device", "")),
         "n_nonfinite_steps": int(res.get("n_nonfinite_steps", 0)),
         # accuracy (exact sigma of this method's own n-sample estimate)
-        "final_sigma_per_trial": sigma[:, -1],
-        "final_sigma_mean": float(sigma[:, -1].mean()),
-        "training_sigma_mean": float(sigma.mean()),
-        # energy and convergence
-        "final_energy_per_trial": exact_E[:, -1],
-        "final_energy_mean": float(exact_E[:, -1].mean()),
+        # (None where no exact sigma was computed, e.g. 80x2 MC)
+        "final_sigma_per_trial": None if np.isnan(sigma).all() else sigma[:, -1],
+        "final_sigma_mean": None if np.isnan(sigma).all() else float(sigma[:, -1].mean()),
+        "training_sigma_mean": None if np.isnan(sigma).all() else float(sigma.mean()),
+        # energy and convergence, from the logged energy (rolling mean of
+        # SMOOTH_WINDOW snapshots)
+        "energy_source": "logged",
+        "smooth_window_snapshots": SMOOTH_WINDOW,
+        "final_energy_per_trial": smooth_E[:, -1],
+        "final_energy_mean": float(smooth_E[:, -1].mean()),
         "final_p_reset_mean": None if p_reset is None else float(p_reset[:, -1].mean()),
         "convergence_rel_tol": CONVERGENCE_REL_TOL,
         "n_converged": int(sum(s is not None for s in conv_step)),
@@ -304,8 +348,9 @@ def analyse(run_dir, batch=None):
     }
     dump_json(summary, os.path.join(run_dir, "summary.json"))
 
-    plot_run(os.path.join(run_dir, "plots"), steps, exact_E,
-             sigma if mode == "traj" else None, p_reset, E0, cfg, method)
+    plot_run(os.path.join(run_dir, "plots"), steps, logged_E,
+             sigma if (mode == "traj" and np.isfinite(sigma).any()) else None,
+             p_reset, E0, cfg, method)
     print(f"[exp1] wrote metrics.csv, summary.json, plots/ in {run_dir}")
     return summary
 
@@ -315,9 +360,12 @@ def main(argv=None):
     ap.add_argument("run_dirs", nargs="+")
     ap.add_argument("--batch", type=int, default=None,
                     help="parameter vectors per enumerated evaluation (default: trials)")
+    ap.add_argument("--sigma", choices=["auto", "cached", "exact", "none"], default="auto",
+                    help="MC sigma: auto = reuse analysis.h5 if present, else leave blank; "
+                         "exact = recompute over all 3^R trajectories (GPU); none = blank")
     args = ap.parse_args(argv)
     for d in args.run_dirs:
-        analyse(d, batch=args.batch)
+        analyse(d, batch=args.batch, sigma_mode=args.sigma)
 
 
 if __name__ == "__main__":

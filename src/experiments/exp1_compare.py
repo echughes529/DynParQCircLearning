@@ -82,7 +82,8 @@ def size_axis(ax, rows):
     ax.set_xscale("log")
     ax.minorticks_off()
     ax.set_xticks([s[0] for s in sizes])
-    ax.set_xticklabels([size_label(s[1], s[2]) for s in sizes], rotation=30, ha="right")
+    ax.set_xticklabels([size_label(s[1], s[2]) for s in sizes], rotation=45, ha="right",
+                       fontsize=7, rotation_mode="anchor")
     ax.set_xlabel("System size (qubits)")
 
 
@@ -90,7 +91,14 @@ def plot_cost_vs_size(rows, out_dir, plt):
     from matplotlib.colors import Normalize
     sig = [r["final_sigma_mean"] for r in rows if r.get("final_sigma_mean") is not None]
     norm = Normalize(vmin=0.0, vmax=max(sig) if sig and max(sig) > 0 else 1.0)
-    cmap = plt.get_cmap("viridis")
+    cmap = plt.get_cmap("viridis").copy()
+    # No sigma available (e.g. 80x2 MC): light grey face. Not white, which would
+    # read as the hollow markers used for failed runs.
+    cmap.set_bad("0.8")
+
+    def sig(r):
+        v = r.get("final_sigma_mean")
+        return np.nan if v is None else v
 
     for key, ylabel, fname in COST_METRICS:
         have = [r for r in rows if r.get(key) is not None]
@@ -105,7 +113,7 @@ def plot_cost_vs_size(rows, out_dir, plt):
                 ax.plot([r["n_qubits"] for r in ok], [r[key] for r in ok],
                         color=colour, lw=1.2, label=label, zorder=1)
                 ax.scatter([r["n_qubits"] for r in ok], [r[key] for r in ok],
-                           c=[r["final_sigma_mean"] for r in ok], cmap=cmap, norm=norm,
+                           c=[sig(r) for r in ok], cmap=cmap, norm=norm, plotnonfinite=True,
                            marker=MARKERS[m], s=55, edgecolors=colour, linewidths=1.2,
                            zorder=2)
             # Failed runs: hollow marker at the failing size, plotted at the
@@ -129,7 +137,7 @@ def plot_cost_vs_size(rows, out_dir, plt):
 
 
 def plot_cost_vs_accuracy(rows, out_dir, plt):
-    ok = [r for r in rows if r["status"] == "ok"]
+    ok = [r for r in rows if r["status"] == "ok" and r.get("final_sigma_mean") is not None]
     lattices = sorted({(r["n_qubits"], r["Lx"], r["Ly"]) for r in ok})
     cmap = plt.get_cmap("plasma", max(len(lattices), 2))
     for key, ylabel, fname in [("mean_step_seconds", "Time per step (s)", "cost_vs_accuracy.png"),
@@ -196,6 +204,47 @@ def plot_convergence(rows, out_dir, plt):
         plt.close(fig)
 
 
+def plot_per_size(rows, out_dir, plt):
+    """Compile time, sigma and final energy gap against size, one line per method."""
+    specs = [
+        ("compile_seconds", 1 / 60, "Compile time (min)", True, None, "compile_vs_size.png"),
+        ("training_sigma_mean", 1.0, r"Mean $\sigma[\hat E_n]$ over training", True,
+         ("mc_n1", "mc_n8"), "sigma_vs_size.png"),
+        ("final_sigma_mean", 1.0, r"$\sigma[\hat E_n]$ at the trained parameters", True,
+         ("mc_n1", "mc_n8"), "sigma_final_vs_size.png"),
+        ("energy_gap_per_qubit", 1.0, r"$(E - E_0)/N$", False, None, "energy_gap_vs_size.png"),
+    ]
+    for r in rows:
+        if r.get("final_energy_mean") is not None and r.get("E0") is not None:
+            r["energy_gap_per_qubit"] = (r["final_energy_mean"] - r["E0"]) / r["n_qubits"]
+    for key, scale, ylabel, logy, only, fname in specs:
+        fig, ax = plt.subplots(figsize=(6, 4.2))
+        drawn = False
+        for m, (label, colour) in METHODS.items():
+            if only and m not in only:
+                continue
+            ok = sorted([r for r in rows if r["method"] == m and r["status"] == "ok"
+                         and r.get(key) is not None], key=lambda r: r["n_qubits"])
+            if not ok:
+                continue
+            drawn = True
+            ax.plot([r["n_qubits"] for r in ok], [r[key] * scale for r in ok], color=colour,
+                    marker=MARKERS[m], ms=5, lw=1.2, label=label,
+                    ls="--" if m == "purified" else "-")
+        if not drawn:
+            plt.close(fig)
+            continue
+        if logy:
+            ax.set_yscale("log")
+        ax.set_ylabel(ylabel)
+        size_axis(ax, rows)
+        ax.grid(True, ls="--", alpha=0.5)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        fig.savefig(os.path.join(out_dir, fname), dpi=200)
+        plt.close(fig)
+
+
 def plot_training_curves(rows, out_dir, plt):
     by_lattice = {}
     for r in rows:
@@ -211,9 +260,11 @@ def plot_training_curves(rows, out_dir, plt):
             curves = []
             for t in trials:
                 sel = data["trial"] == t
-                ax.plot(data["step"][sel], data["exact_energy"][sel], color=colour,
+                # The energy each method logged during training (for MC its own
+                # noisy n-sample estimate), not an exact re-evaluation.
+                ax.plot(data["step"][sel], data["logged_energy"][sel], color=colour,
                         alpha=0.25, lw=0.8)
-                curves.append(data["exact_energy"][sel])
+                curves.append(data["logged_energy"][sel])
             steps = data["step"][data["trial"] == trials[0]]
             # Purified and enumerated are both exact and share initial
             # parameters, so their curves coincide; dash purified so both show.
@@ -359,6 +410,7 @@ def main(argv=None):
     plot_cost_vs_size(rows, out_dir, plt)
     plot_cost_vs_accuracy(rows, out_dir, plt)
     plot_convergence(rows, out_dir, plt)
+    plot_per_size(rows, out_dir, plt)
     plot_training_curves(rows, out_dir, plt)
 
     if args.reference_exp_dir:
