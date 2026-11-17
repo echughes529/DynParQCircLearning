@@ -93,15 +93,13 @@ def plot_cost_vs_size(rows, out_dir, plt):
     from matplotlib.colors import Normalize
     sig = [r["final_sigma_mean"] for r in rows if r.get("final_sigma_mean") is not None]
     norm = Normalize(vmin=0.0, vmax=max(sig) if sig and max(sig) > 0 else 1.0)
-    cmap = plt.get_cmap("viridis").copy()
-    # No sigma available (e.g. 80x2 MC): light grey face. Not white, which would
-    # read as the hollow markers used for failed runs.
-    cmap.set_bad("0.8")
+    cmap = plt.get_cmap("viridis")
 
-    def sig(r):
-        v = r.get("final_sigma_mean")
-        return np.nan if v is None else v
-
+    # One marker shape throughout; the line colour says which method it is.
+    #  - exact methods (sigma = 0 always): small solid dots in the line colour
+    #  - MC with sigma: larger circles filled by sigma (the colour bar)
+    #  - MC without sigma (e.g. 80x2): small solid dots, like the exact methods
+    #  - failed runs: the only hollow marker
     for key, ylabel, fname in COST_METRICS:
         have = [r for r in rows if r.get(key) is not None]
         if not have:
@@ -113,19 +111,21 @@ def plot_cost_vs_size(rows, out_dir, plt):
                         key=lambda r: r["n_qubits"])
             if ok:
                 ax.plot([r["n_qubits"] for r in ok], [r[key] for r in ok],
-                        color=colour, lw=1.2, label=label, zorder=1)
-                ax.scatter([r["n_qubits"] for r in ok], [r[key] for r in ok],
-                           c=[sig(r) for r in ok], cmap=cmap, norm=norm, plotnonfinite=True,
-                           marker=MARKERS[m], s=55, edgecolors=colour, linewidths=1.2,
-                           zorder=2)
+                        color=colour, lw=1.2, label=label, zorder=1,
+                        marker="o", ms=3.5)
+                if m.startswith("mc"):
+                    sig = [r for r in ok if r.get("final_sigma_mean") is not None]
+                    ax.scatter([r["n_qubits"] for r in sig], [r[key] for r in sig],
+                               c=[r["final_sigma_mean"] for r in sig], cmap=cmap, norm=norm,
+                               marker="o", s=45, edgecolors=colour, linewidths=1.0, zorder=2)
             # Failed runs: hollow marker at the failing size, plotted at the
             # method's last successful value so the axis stays meaningful.
             failed = [r for r in rows if r["method"] == m and r["status"] != "ok"]
             for r in failed:
                 prev = [o for o in ok if o["n_qubits"] < r["n_qubits"]]
                 if prev:
-                    ax.scatter([r["n_qubits"]], [prev[-1][key]], marker=MARKERS[m], s=55,
-                               facecolors="none", edgecolors=colour, linewidths=1.2)
+                    ax.scatter([r["n_qubits"]], [prev[-1][key]], marker="o", s=45,
+                               facecolors="none", edgecolors=colour, linewidths=1.2, zorder=2)
         ax.set_yscale("log")
         ax.set_ylabel(ylabel)
         size_axis(ax, rows)
@@ -191,7 +191,7 @@ def plot_convergence(rows, out_dir, plt):
             x = np.array([p[0] for p in pts]) + (i - 1.5) * 0.12   # small dodge
             y = np.array([p[1] for p in pts])
             err = np.array([[p[1] - p[2] for p in pts], [p[3] - p[1] for p in pts]])
-            ax.errorbar(x, y, yerr=err, color=colour, marker=MARKERS[m], capsize=3,
+            ax.errorbar(x, y, yerr=err, color=colour, marker="o", ms=3.5, capsize=3,
                         lw=1.2, label=label)
         if not any_data:
             plt.close(fig)
@@ -236,7 +236,7 @@ def plot_per_size(rows, out_dir, plt):
                 continue
             drawn = True
             ax.plot([r["n_qubits"] for r in ok], [r[key] * scale for r in ok], color=colour,
-                    marker=MARKERS[m], ms=5, lw=1.2, label=label,
+                    marker="o", ms=3.5, lw=1.2, label=label,
                     ls="--" if m == "purified" else "-")
         if not drawn:
             plt.close(fig)
