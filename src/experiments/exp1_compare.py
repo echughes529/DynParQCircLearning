@@ -91,7 +91,8 @@ def size_axis(ax, rows):
 
 def plot_cost_vs_size(rows, out_dir, plt):
     from matplotlib.colors import Normalize
-    sig = [r["final_sigma_mean"] for r in rows if r.get("final_sigma_mean") is not None]
+    # Marker colour: sigma[E_n] averaged over all training snapshots and trials.
+    sig = [r["training_sigma_mean"] for r in rows if r.get("training_sigma_mean") is not None]
     norm = Normalize(vmin=0.0, vmax=max(sig) if sig and max(sig) > 0 else 1.0)
     cmap = plt.get_cmap("viridis")
 
@@ -114,9 +115,9 @@ def plot_cost_vs_size(rows, out_dir, plt):
                         color=colour, lw=1.2, label=label, zorder=1,
                         marker="o", ms=3.5)
                 if m.startswith("mc"):
-                    sig = [r for r in ok if r.get("final_sigma_mean") is not None]
+                    sig = [r for r in ok if r.get("training_sigma_mean") is not None]
                     ax.scatter([r["n_qubits"] for r in sig], [r[key] for r in sig],
-                               c=[r["final_sigma_mean"] for r in sig], cmap=cmap, norm=norm,
+                               c=[r["training_sigma_mean"] for r in sig], cmap=cmap, norm=norm,
                                marker="o", s=45, edgecolors=colour, linewidths=1.0, zorder=2)
             # Failed runs: hollow marker at the failing size, plotted at the
             # method's last successful value so the axis stays meaningful.
@@ -132,7 +133,7 @@ def plot_cost_vs_size(rows, out_dir, plt):
         ax.grid(True, ls="--", alpha=0.5)
         ax.legend(fontsize=8)
         sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
-        fig.colorbar(sm, ax=ax, label=r"Mean $\sigma[\hat E_n]$")
+        fig.colorbar(sm, ax=ax, label=r"Mean $\sigma[\hat E_n]$ over training")
         fig.tight_layout()
         fig.savefig(os.path.join(out_dir, fname), dpi=200)
         plt.close(fig)
