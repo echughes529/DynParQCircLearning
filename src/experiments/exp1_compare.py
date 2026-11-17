@@ -239,8 +239,8 @@ def plot_per_size(rows, out_dir, plt):
             # enumerated is dotted and drawn on top so purified shows through.
             overlap = key.startswith("energy_gap") and m == "enumerated"
             ax.plot([r["n_qubits"] for r in ok], [r[key] * scale for r in ok], color=colour,
-                    marker="o", ms=3.5, lw=1.2, label=label,
-                    ls=":" if overlap else "-", zorder=4 if overlap else 2)
+                    marker="o", ms=3.5, lw=2.2 if overlap else 1.2, label=label,
+                    ls=(0, (3, 6)) if overlap else "-", zorder=4 if overlap else 2)
         if not drawn:
             plt.close(fig)
             continue
@@ -298,8 +298,9 @@ def _plot_training_curves(rows, out_dir, plt, col, ylabel, suffix):
             # parameters, so their curves coincide: enumerated is dotted and
             # drawn on top (higher zorder) of the solid purified line.
             enum = r["method"] == "enumerated"
-            ax.plot(steps, np.mean(curves, axis=0), color=colour, lw=2, label=label,
-                    ls=":" if enum else "-", zorder=4 if enum else 3)
+            # (3, 6): 3 pt dash, 6 pt gap, in units of line width
+            ax.plot(steps, np.mean(curves, axis=0), color=colour, lw=3 if enum else 2,
+                    label=label, ls=(0, (2, 4)) if enum else "-", zorder=4 if enum else 3)
         ax.axhline(exact_ground_energy(Lx, Ly), color="k", ls="--", lw=1)
         ax.set_xlabel("Training step")
         ax.set_ylabel(ylabel)
