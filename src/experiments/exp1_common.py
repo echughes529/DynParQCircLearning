@@ -17,7 +17,7 @@ METHODS = {
     "mc_n1": ("MC, n=1", "tab:orange"),
     "mc_n8": ("MC, n=8", "tab:red"),
     "purified": ("Purified", "tab:blue"),
-    "enumerated": ("Enumerated", "tab:green"),
+    "enumerated": ("Parallel", "tab:green"),
 }
 
 # Convergence: exact energy within this fraction of E0.
