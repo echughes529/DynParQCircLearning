@@ -31,6 +31,12 @@ set -euo pipefail
 REPO=/home/s1931382/DynParQCircLearning
 EXP=experiments/experiment_1.1_scaling_system_size_nx3
 cd "$REPO"
+# The exact-method analyses below run locally with `python`; without the venv
+# that is the system Python (system matplotlib + ~/.local NumPy 2 -> ImportError).
+# activate references unset variables, so relax `set -u` around it.
+set +u
+source /home/s1931382/dpqc_venv/bin/activate
+set -u
 
 POLICY=caps_192_256
 EXACT=1
