@@ -43,6 +43,9 @@ EXACT=1
 FORCE=0
 DRY_RUN=0
 TIME=04:00:00
+# A40, as for training: at chi=192 the exact trajectory table needs 9-25 GiB,
+# which does not fit the 11 GiB cards that a bare gpu:1 can land on.
+GRES=gpu:a40:1
 BATCH=""
 MEM=""
 for arg in "$@"; do
@@ -89,7 +92,7 @@ for d in "$PDIR"/*x*/*/; do
   elif [ "$EXACT" != 1 ]; then
     CMD=(python -m src.experiments.exp1_analyse_run "$d" --sigma none)
   else
-    CMD=(./submit_diag.sh NAME="$AN_NAME" TIME="$TIME" GRES=gpu:1 ${MEM:+MEM="$MEM"} --
+    CMD=(./submit_diag.sh NAME="$AN_NAME" TIME="$TIME" GRES="$GRES" ${MEM:+MEM="$MEM"} --
          python -m src.experiments.exp1_analyse_run "$d" --sigma exact ${BATCH:+--batch "$BATCH"})
   fi
   if [ "$DRY_RUN" = 1 ]; then echo "${CMD[*]}"; else "${CMD[@]}"; fi
